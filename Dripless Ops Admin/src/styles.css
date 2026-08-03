@@ -1,0 +1,282 @@
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  background: #f4f6fb;
+  color: #0f172a;
+}
+
+a {
+  color: inherit;
+}
+
+.container {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 24px;
+}
+
+.ops-shell {
+  display: grid;
+  grid-template-columns: 240px minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
+}
+
+.ops-sidebar {
+  position: sticky;
+  top: 16px;
+}
+
+.ops-nav-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.ops-nav-link {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  text-decoration: none;
+  border-radius: 8px;
+  padding: 10px 14px;
+  font-weight: 600;
+  background: #334155;
+  color: #fff;
+}
+
+.ops-nav-link.is-active {
+  background: #0f766e;
+}
+
+.ops-nav-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 22px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.ops-nav-badge-warning {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.ops-nav-badge-danger {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+.ops-main {
+  min-width: 0;
+}
+
+.card {
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 16px;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.stack {
+  display: grid;
+  gap: 12px;
+}
+
+.row {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+input,
+select,
+button,
+textarea {
+  font: inherit;
+}
+
+input,
+select,
+textarea {
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  padding: 10px;
+  width: 100%;
+}
+
+button {
+  border: 0;
+  border-radius: 8px;
+  padding: 10px 14px;
+  background: #0f766e;
+  color: #fff;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+button.secondary {
+  background: #334155;
+}
+
+button.warning {
+  background: #b45309;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+th,
+td {
+  padding: 10px;
+  border-bottom: 1px solid #e2e8f0;
+  text-align: left;
+  vertical-align: top;
+}
+
+th {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #475569;
+}
+
+.muted {
+  color: #64748b;
+  font-size: 13px;
+}
+
+.alert-success {
+  border-color: #86efac;
+  color: #166534;
+  background: #f0fdf4;
+}
+
+.alert-danger {
+  border-color: #fecaca;
+  color: #991b1b;
+  background: #fef2f2;
+}
+
+.alert-danger-soft {
+  border-color: #fecaca;
+  background: #fff1f2;
+}
+
+.dispatch-exhausted-card-warning {
+  border-color: #fcd34d;
+  background: #fffbeb;
+}
+
+.dispatch-exhausted-card-danger {
+  border-color: #fca5a5;
+  background: #fff1f2;
+}
+
+.list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 10px;
+}
+
+.list li {
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  padding: 10px;
+  background: #f8fafc;
+}
+
+.dispatch-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.dispatch-lane {
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 10px;
+  background: #f8fafc;
+}
+
+.dispatch-lane-list {
+  display: grid;
+  gap: 8px;
+}
+
+.dispatch-card {
+  border: 1px solid #dbeafe;
+  border-radius: 10px;
+  padding: 10px;
+  background: #fff;
+  display: grid;
+  gap: 6px;
+}
+
+.dispatch-card-critical {
+  border-color: #fca5a5;
+  background: #fff7f7;
+}
+
+.dispatch-alert-text {
+  color: #991b1b;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.pill-danger {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: #fee2e2;
+  color: #991b1b;
+  font-weight: 700;
+}
+
+.pill-ok {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: #dcfce7;
+  color: #166534;
+  font-weight: 700;
+}
+
+@media (max-width: 760px) {
+  .ops-shell {
+    grid-template-columns: 1fr;
+  }
+
+  .ops-sidebar {
+    position: static;
+  }
+
+  .grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .dispatch-grid {
+    grid-template-columns: 1fr;
+  }
+}
