@@ -4,58 +4,63 @@ import { DEFAULT_OPS_PERMISSIONS } from '../src/auth/permissions.js';
 
 const prisma = new PrismaClient();
 
+async function upsertService(
+  slug: string,
+  name: string,
+  options: Array<{ slug: string; name: string; basePrice: number; ecoPointsAward: number }>
+) {
+  const service = await prisma.service.upsert({
+    where: { slug },
+    update: { name, active: true },
+    create: { slug, name, active: true }
+  });
+  for (const option of options) {
+    await prisma.serviceOption.upsert({
+      where: { serviceId_slug: { serviceId: service.id, slug: option.slug } },
+      update: {
+        name: option.name,
+        basePrice: option.basePrice,
+        ecoPointsAward: option.ecoPointsAward,
+        active: true
+      },
+      create: {
+        serviceId: service.id,
+        slug: option.slug,
+        name: option.name,
+        basePrice: option.basePrice,
+        ecoPointsAward: option.ecoPointsAward
+      }
+    });
+  }
+}
+
 async function main() {
   if (process.env.DEMO_MODE !== 'true') {
     console.log('Skipping seed: DEMO_MODE is not true');
     return;
   }
 
-  const services = [
-    {
-      slug: 'car-wash',
-      name: 'Car Wash',
-      options: [
-        { slug: 'basic', name: 'Basic Wash', basePrice: 15.99, ecoPointsAward: 160 },
-        { slug: 'premium', name: 'Premium Wash', basePrice: 24.99, ecoPointsAward: 250 },
-        { slug: 'custom', name: 'Custom Wash', basePrice: 34.99, ecoPointsAward: 320 }
-      ]
-    },
-    {
-      slug: 'taxi',
-      name: 'Eco Taxi',
-      options: [{ slug: 'standard', name: 'Standard Ride', basePrice: 18.5, ecoPointsAward: 185 }]
-    },
-    {
-      slug: 'delivery',
-      name: 'Parcel Delivery',
-      options: [{ slug: 'standard', name: 'Standard Parcel', basePrice: 12, ecoPointsAward: 120 }]
-    },
-    {
-      slug: 'window-solar-clean',
-      name: 'Window & Solar Cleaning',
-      options: [
-        { slug: 'window', name: 'Window Cleaning', basePrice: 39.99, ecoPointsAward: 400 },
-        { slug: 'solar', name: 'Solar Panel Cleaning', basePrice: 45, ecoPointsAward: 450 }
-      ]
-    }
-  ];
+  await upsertService('car-wash', 'Car Wash', [
+    { slug: 'basic', name: 'Basic Wash', basePrice: 15.99, ecoPointsAward: 160 },
+    { slug: 'premium', name: 'Full Valet', basePrice: 24.99, ecoPointsAward: 250 },
+    { slug: 'custom', name: 'Detailing Package', basePrice: 34.99, ecoPointsAward: 320 }
+  ]);
+  await upsertService('taxi', 'Eco Taxi', [
+    { slug: 'standard', name: 'Standard Ride', basePrice: 18.5, ecoPointsAward: 185 }
+  ]);
+  await upsertService('delivery', 'Parcel Delivery', [
+    { slug: 'standard', name: 'Standard Parcel', basePrice: 12, ecoPointsAward: 120 }
+  ]);
+  await upsertService('window-solar-clean', 'Window & Solar Cleaning', [
+    { slug: 'window', name: 'Window Cleaning', basePrice: 39.99, ecoPointsAward: 400 },
+    { slug: 'solar', name: 'Solar Panel Cleaning', basePrice: 45, ecoPointsAward: 450 }
+  ]);
+  await upsertService('home-service', 'Home Service', [
+    { slug: 'mattress', name: 'Mattress Clean', basePrice: 55, ecoPointsAward: 500 },
+    { slug: 'couch', name: 'Couch Clean', basePrice: 65, ecoPointsAward: 550 },
+    { slug: 'carpet', name: 'Carpet Clean', basePrice: 75, ecoPointsAward: 600 }
+  ]);
 
-  for (const service of services) {
-    await prisma.service.upsert({
-      where: { slug: service.slug },
-      update: { name: service.name, active: true },
-      create: {
-        slug: service.slug,
-        name: service.name,
-        active: true,
-        options: {
-          create: service.options
-        }
-      }
-    });
-  }
-
-  // Demo users only in DEMO_MODE — never a production default admin in app source without explicit seed.
   const demoPassword = await hashPassword('DemoPass123!');
 
   await prisma.user.upsert({
@@ -99,6 +104,18 @@ async function main() {
     }
   });
 
+  await prisma.driverLocation.upsert({
+    where: { driverId: 'driver_demo_001' },
+    update: { lat: -26.1076, lng: 28.0567 },
+    create: {
+      driverId: 'driver_demo_001',
+      lat: -26.1076,
+      lng: 28.0567,
+      heading: 90,
+      speedKph: 0
+    }
+  });
+
   await prisma.user.upsert({
     where: { email: 'ops@demo.dripless.local' },
     update: {},
@@ -107,7 +124,7 @@ async function main() {
       passwordHash: demoPassword,
       role: 'ops_admin',
       emailVerifiedAt: new Date(),
-      mustChangePassword: true,
+      mustChangePassword: false,
       opsProfile: {
         create: {
           id: 'ops_demo_001',
@@ -118,11 +135,38 @@ async function main() {
     }
   });
 
+  await prisma.promotion.upsert({
+    where: { promoCode: 'ECO10' },
+    update: {
+      approved: true,
+      isActive: true,
+      startsAt: new Date(Date.now() - 86400000),
+      endsAt: new Date(Date.now() + 30 * 86400000)
+    },
+    create: {
+      title: 'Eco Welcome 10%',
+      description: 'Demo promo for car washes',
+      promoCode: 'ECO10',
+      audience: 'both',
+      serviceScope: 'CAR_WASH',
+      discountType: 'PERCENT',
+      discountValue: 10,
+      startsAt: new Date(Date.now() - 86400000),
+      endsAt: new Date(Date.now() + 30 * 86400000),
+      terms: 'Demo only',
+      approved: true,
+      isActive: true,
+      approvedByAdminId: 'ops_demo_001',
+      approvedAt: new Date()
+    }
+  });
+
   console.log('Demo seed complete.');
   console.log('Demo logins (DEMO_MODE only):');
   console.log('  customer@demo.dripless.local / DemoPass123!');
   console.log('  driver@demo.dripless.local / DemoPass123!');
   console.log('  ops@demo.dripless.local / DemoPass123!');
+  console.log('  promo: ECO10');
 }
 
 main()

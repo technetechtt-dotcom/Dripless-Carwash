@@ -1,32 +1,26 @@
 openapi: 3.0.3
 info:
   title: Dripless Backend API
-  version: 0.2.0
-  description: Auth and bookings skeleton for the secured PostgreSQL-backed API.
+  version: 0.3.0
+  description: Secured Postgres-backed Dripless API (auth, bookings, ops, payments scaffold, evidence, MFA).
 servers:
   - url: http://localhost:4000
 paths:
+  /health:
+    get:
+      summary: Health check
+      responses:
+        '200':
+          description: OK
   /auth/customer/signup:
     post:
       summary: Create a customer account
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/CustomerSignup'
       responses:
         '201':
           description: Account created with session
   /auth/customer/login:
     post:
       summary: Customer login
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/Login'
       responses:
         '200':
           description: Authenticated session
@@ -35,133 +29,103 @@ paths:
   /auth/driver/signup:
     post:
       summary: Create a driver account
-      responses:
-        '201':
-          description: Account created with session
   /auth/driver/login:
     post:
       summary: Driver login
-      responses:
-        '200':
-          description: Authenticated session
   /auth/ops-admin/login:
     post:
       summary: Ops admin login
-      responses:
-        '200':
-          description: Authenticated session
   /auth/refresh:
     post:
-      summary: Rotate refresh token and issue new access token
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [refreshToken]
-              properties:
-                refreshToken:
-                  type: string
-      responses:
-        '200':
-          description: Rotated session
-        '401':
-          description: Invalid or revoked refresh token
+      summary: Rotate refresh token
   /auth/logout:
     post:
       summary: Revoke current access session
-      security:
-        - bearerAuth: []
-      responses:
-        '204':
-          description: Logged out
-  /auth/verify-email:
+  /auth/mfa/setup:
     post:
-      summary: Verify email with token
-      responses:
-        '200':
-          description: Email verified
-  /auth/password-reset/request:
+      summary: Start ops TOTP MFA enrollment
+  /auth/mfa/verify:
     post:
-      summary: Request password reset
-      responses:
-        '200':
-          description: Accepted
-  /auth/password-reset/confirm:
+      summary: Confirm MFA TOTP and enable
+  /auth/mfa/disable:
     post:
-      summary: Confirm password reset
-      responses:
-        '200':
-          description: Password updated
+      summary: Disable MFA with TOTP or backup code
   /bookings:
     post:
       summary: Create booking (server-priced, ownership enforced)
-      security:
-        - bearerAuth: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/CreateBooking'
-      responses:
-        '201':
-          description: Booking created
-        '403':
-          description: Email not verified or account not bookable
+    get:
+      summary: List bookings for authenticated role
+  /bookings/{bookingId}/status:
+    patch:
+      summary: Update booking status
+  /bookings/{bookingId}/tracking:
+    get:
+      summary: Live tracking snapshot
+  /bookings/{bookingId}/evidence:
+    get:
+      summary: List wash evidence
+    post:
+      summary: Upload wash evidence / set completion PIN
+  /driver/jobs/incoming:
+    post:
+      summary: Next assigned job for driver (or null)
+  /driver/jobs/{bookingId}/accept:
+    post:
+      summary: Driver accepts job
+  /driver/jobs/{bookingId}/decline:
+    post:
+      summary: Driver declines and triggers redispatch
+  /driver/location:
+    patch:
+      summary: Update driver GPS
+  /ops/dashboard/summary:
+    get:
+      summary: Ops dashboard counters
+  /ops/customers:
+    get:
+      summary: List customers
+  /ops/drivers:
+    get:
+      summary: List drivers
+  /ops/bookings:
+    get:
+      summary: List bookings
+  /ops/specials:
+    get:
+      summary: List promotions
+    post:
+      summary: Create promotion
+  /ops/notifications/broadcast:
+    post:
+      summary: Broadcast notification
+  /payments/intent:
+    post:
+      summary: Create payment intent (SA PSP scaffold/stub)
+  /payments/webhooks/stub:
+    post:
+      summary: Stub payment webhook
+  /payments/webhooks/paystack:
+    post:
+      summary: Paystack webhook (scaffold)
+  /payments/webhooks/payfast:
+    post:
+      summary: PayFast webhook (scaffold)
+  /payments/webhooks/ozow:
+    post:
+      summary: Ozow webhook (scaffold)
+  /notifications:
+    get:
+      summary: List notifications for auth user
+    post:
+      summary: Create notification
+  /specials:
+    get:
+      summary: Active specials for role
+  /specials/redeem:
+    post:
+      summary: Redeem promo code
 components:
   securitySchemes:
     bearerAuth:
       type: http
       scheme: bearer
-  schemas:
-    Login:
-      type: object
-      required: [email, password]
-      properties:
-        email:
-          type: string
-          format: email
-        password:
-          type: string
-          minLength: 6
-    CustomerSignup:
-      type: object
-      required: [name, email, password]
-      properties:
-        name:
-          type: string
-        email:
-          type: string
-          format: email
-        password:
-          type: string
-          minLength: 8
-        phone:
-          type: string
-    CreateBooking:
-      type: object
-      required: [pickupLocation]
-      properties:
-        pickupLocation:
-          type: string
-        serviceSlug:
-          type: string
-        optionSlug:
-          type: string
-        pickupCoordinates:
-          type: object
-          properties:
-            lat:
-              type: number
-            lng:
-              type: number
-        promoCode:
-          type: string
-        price:
-          type: number
-          description: Ignored; server catalogue pricing is authoritative
-        customerId:
-          type: string
-          description: Ignored for customer role; forced from session

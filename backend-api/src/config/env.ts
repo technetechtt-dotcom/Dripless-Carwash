@@ -14,7 +14,22 @@ const envSchema = z.object({
   REFRESH_TOKEN_TTL_DAYS: z.coerce.number().default(7),
   BCRYPT_COST: z.coerce.number().min(10).max(15).default(12),
   BOOTSTRAP_ADMIN_EMAIL: z.string().optional().default(''),
-  BOOTSTRAP_ADMIN_PASSWORD: z.string().optional().default('')
+  BOOTSTRAP_ADMIN_PASSWORD: z.string().optional().default(''),
+  GEOCODER_PROVIDER: z.enum(['none', 'mapbox', 'google']).default('none'),
+  MAPBOX_ACCESS_TOKEN: z.string().optional().default(''),
+  GOOGLE_MAPS_API_KEY: z.string().optional().default(''),
+  PAYSTACK_SECRET_KEY: z.string().optional().default(''),
+  PAYSTACK_PUBLIC_KEY: z.string().optional().default(''),
+  PAYFAST_MERCHANT_ID: z.string().optional().default(''),
+  PAYFAST_MERCHANT_KEY: z.string().optional().default(''),
+  PAYFAST_PASSPHRASE: z.string().optional().default(''),
+  OZOW_SITE_CODE: z.string().optional().default(''),
+  OZOW_API_KEY: z.string().optional().default(''),
+  OZOW_PRIVATE_KEY: z.string().optional().default(''),
+  PAYMENTS_PROVIDER: z.enum(['stub', 'paystack', 'payfast', 'ozow']).default('stub'),
+  REDIS_URL: z.string().optional().default(''),
+  MFA_ENC_KEY: z.string().optional().default(''),
+  EVIDENCE_STORAGE_DIR: z.string().optional().default('data/evidence')
 });
 
 const parsed = envSchema.safeParse(process.env);

@@ -5,9 +5,19 @@ import { authRequired, roleRequired } from '../middleware/auth.js';
 import { validate } from '../middleware/validate.js';
 import { assertValidCoordinates } from '../geo/geocode.js';
 import { HttpError } from '../middleware/error.js';
+import { mapBookingDto } from '../dto/mappers.js';
 import { env } from '../config/env.js';
+import { assertStatusTransition } from '../bookings/statusMachine.js';
+import {
+  MAX_AUTO_DISPATCH_ATTEMPTS,
+  autoAssignDriver,
+  createOrRefreshDispatchIncident
+} from '../bookings/dispatch.js';
+import { assertWashCompletable } from '../evidence/routes.js';
 
 export const driversRouter = Router();
+
+const mapBooking = mapBookingDto;
 
 const locationSchema = z
   .object({
@@ -77,10 +87,8 @@ driversRouter.post(
       const driverId = req.auth!.profileId;
       const booking = await prisma.booking.findFirst({
         where: {
-          OR: [
-            { driverId, status: { in: ['PENDING', 'CONFIRMED'] } },
-            { driverId: null, status: 'PENDING' }
-          ]
+          driverId,
+          status: { in: ['PENDING', 'CONFIRMED'] }
         },
         orderBy: { createdAt: 'asc' }
       });
@@ -89,7 +97,6 @@ driversRouter.post(
         return res.json(null);
       }
 
-      // In production, do not assign without real pickup coordinates
       if (
         !env.demoMode &&
         (booking.pickupLat == null || booking.pickupLng == null)
@@ -97,24 +104,179 @@ driversRouter.post(
         return res.json(null);
       }
 
-      res.json({
-        id: booking.id,
-        customerId: booking.customerId,
-        driverId: booking.driverId,
-        serviceType: booking.serviceSlug,
-        serviceName: booking.serviceName,
-        optionName: booking.optionName,
-        status: booking.status,
-        price: booking.price,
-        pickupLocation: booking.pickupLocation,
-        destinationLocation: booking.destinationLocation,
-        pickupCoordinates:
-          booking.pickupLat != null
-            ? { lat: booking.pickupLat, lng: booking.pickupLng }
-            : null,
-        createdAt: booking.createdAt.toISOString(),
-        updatedAt: booking.updatedAt.toISOString()
+      res.json(mapBooking(booking));
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+driversRouter.post(
+  '/jobs/:bookingId/accept',
+  authRequired,
+  roleRequired(['driver']),
+  async (req, res, next) => {
+    try {
+      const driverId = req.auth!.profileId;
+      const bookingId = String(req.params.bookingId);
+      const booking = await prisma.booking.findUnique({ where: { id: bookingId } });
+      if (!booking) throw new HttpError(404, 'Booking not found');
+      if (booking.driverId !== driverId) {
+        throw new HttpError(403, 'Job not assigned to this driver');
+      }
+      if (!['PENDING', 'CONFIRMED'].includes(booking.status)) {
+        throw new HttpError(400, 'Job cannot be accepted in current status');
+      }
+
+      assertStatusTransition(booking.status, 'EN_ROUTE');
+      const updated = await prisma.$transaction(async (tx) => {
+        const row = await tx.booking.update({
+          where: { id: bookingId },
+          data: { status: 'EN_ROUTE' }
+        });
+        await tx.bookingStatusHistory.create({
+          data: {
+            bookingId,
+            fromStatus: booking.status,
+            toStatus: 'EN_ROUTE',
+            actorId: driverId,
+            actorRole: 'driver',
+            reason: 'Driver accepted job'
+          }
+        });
+        await tx.driverProfile.update({
+          where: { id: driverId },
+          data: { activeBookingId: bookingId }
+        });
+        return row;
       });
+      res.json(mapBooking(updated));
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+driversRouter.post(
+  '/jobs/:bookingId/decline',
+  authRequired,
+  roleRequired(['driver']),
+  async (req, res, next) => {
+    try {
+      const driverId = req.auth!.profileId;
+      const bookingId = String(req.params.bookingId);
+      const booking = await prisma.booking.findUnique({ where: { id: bookingId } });
+      if (!booking) throw new HttpError(404, 'Booking not found');
+      if (booking.driverId !== driverId) {
+        throw new HttpError(403, 'Job not assigned to this driver');
+      }
+
+      const nextAttempt = booking.dispatchAttemptCount + 1;
+      await prisma.$transaction(async (tx) => {
+        await tx.driverProfile.update({
+          where: { id: driverId },
+          data: { activeBookingId: null }
+        });
+        await tx.booking.update({
+          where: { id: bookingId },
+          data: {
+            driverId: null,
+            status: 'PENDING',
+            dispatchAttemptCount: nextAttempt,
+            dispatchReason: 'Driver declined'
+          }
+        });
+        await tx.bookingStatusHistory.create({
+          data: {
+            bookingId,
+            fromStatus: booking.status,
+            toStatus: 'PENDING',
+            actorId: driverId,
+            actorRole: 'driver',
+            reason: 'Driver declined — redispatch'
+          }
+        });
+      });
+
+      if (nextAttempt >= MAX_AUTO_DISPATCH_ATTEMPTS) {
+        await createOrRefreshDispatchIncident(
+          bookingId,
+          `Auto-dispatch attempts exceeded (${MAX_AUTO_DISPATCH_ATTEMPTS}) after driver declines.`,
+          'high'
+        );
+        const pending = await prisma.booking.findUnique({ where: { id: bookingId } });
+        return res.json(pending ? mapBooking(pending) : null);
+      }
+
+      const reassigned = await autoAssignDriver(bookingId);
+      if (!reassigned) {
+        await createOrRefreshDispatchIncident(
+          bookingId,
+          'No available verified driver after decline.',
+          'medium'
+        );
+      }
+      const pending = await prisma.booking.findUnique({ where: { id: bookingId } });
+      res.json(pending ? mapBooking(pending) : null);
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+driversRouter.patch(
+  '/jobs/:bookingId/status',
+  authRequired,
+  roleRequired(['driver']),
+  validate(
+    z
+      .object({
+        status: z.enum([
+          'EN_ROUTE',
+          'ARRIVED',
+          'IN_PROGRESS',
+          'COMPLETED',
+          'CANCELLED'
+        ]),
+        reason: z.string().max(500).optional()
+      })
+      .strict()
+  ),
+  async (req, res, next) => {
+    try {
+      const driverId = req.auth!.profileId;
+      const bookingId = String(req.params.bookingId);
+      const booking = await prisma.booking.findUnique({ where: { id: bookingId } });
+      if (!booking) throw new HttpError(404, 'Booking not found');
+      if (booking.driverId !== driverId) throw new HttpError(403, 'Forbidden');
+      assertStatusTransition(booking.status, req.body.status);
+      if (req.body.status === 'COMPLETED') {
+        await assertWashCompletable(bookingId);
+      }
+      const updated = await prisma.$transaction(async (tx) => {
+        const row = await tx.booking.update({
+          where: { id: bookingId },
+          data: { status: req.body.status }
+        });
+        await tx.bookingStatusHistory.create({
+          data: {
+            bookingId,
+            fromStatus: booking.status,
+            toStatus: req.body.status,
+            actorId: driverId,
+            actorRole: 'driver',
+            reason: req.body.reason
+          }
+        });
+        if (req.body.status === 'COMPLETED' || req.body.status === 'CANCELLED') {
+          await tx.driverProfile.update({
+            where: { id: driverId },
+            data: { activeBookingId: null }
+          });
+        }
+        return row;
+      });
+      res.json(mapBooking(updated));
     } catch (error) {
       next(error);
     }

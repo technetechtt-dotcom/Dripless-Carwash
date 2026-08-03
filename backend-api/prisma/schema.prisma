@@ -78,6 +78,8 @@ model User {
   failedLoginCount     Int           @default(0)
   lockedUntil          DateTime?
   mfaEnabled           Boolean       @default(false)
+  mfaSecretEnc         String?
+  mfaBackupCodesHash   String[]      @default([])
   createdAt            DateTime      @default(now())
   updatedAt            DateTime      @updatedAt
 
@@ -89,8 +91,23 @@ model User {
   emailTokens          EmailToken[]
   passwordResetTokens  PasswordResetToken[]
   auditLogs            AuditLog[]    @relation("AuditActor")
+  payments             Payment[]
+  webAuthnCredentials  WebAuthnCredential[]
 
   @@index([role])
+}
+
+model WebAuthnCredential {
+  id           String   @id @default(cuid())
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  credentialId String   @unique
+  publicKey    String
+  counter      Int      @default(0)
+  transports   String[] @default([])
+  createdAt    DateTime @default(now())
+
+  @@index([userId])
 }
 
 model CustomerProfile {
@@ -216,10 +233,78 @@ model Booking {
   statusHistory          BookingStatusHistory[]
   assignments            BookingAssignment[]
   incidents              Incident[]
+  evidence               BookingEvidence[]
+  payments               Payment[]
+  completionPinHash      String?
 
   @@index([customerId])
   @@index([driverId])
   @@index([status])
+}
+
+model BookingEvidence {
+  id          String   @id @default(cuid())
+  bookingId   String
+  booking     Booking  @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  kind        String
+  urlOrData   String
+  notes       String?
+  actorId     String?
+  actorRole   String?
+  createdAt   DateTime @default(now())
+
+  @@index([bookingId, kind])
+}
+
+enum PaymentProvider {
+  paystack
+  payfast
+  ozow
+  stub
+}
+
+enum PaymentStatus {
+  PENDING
+  REQUIRES_ACTION
+  AUTHORIZED
+  PAID
+  FAILED
+  REFUNDED
+}
+
+model Payment {
+  id              String          @id @default(cuid())
+  bookingId       String?
+  booking         Booking?        @relation(fields: [bookingId], references: [id])
+  userId          String
+  user            User            @relation(fields: [userId], references: [id])
+  provider        PaymentProvider
+  amountZar       Float
+  currency        String          @default("ZAR")
+  status          PaymentStatus   @default(PENDING)
+  externalRef     String?
+  checkoutUrl     String?
+  metadata        Json?
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+  events          PaymentEvent[]
+
+  @@index([bookingId])
+  @@index([userId])
+  @@index([externalRef])
+}
+
+model PaymentEvent {
+  id         String   @id @default(cuid())
+  paymentId  String
+  payment    Payment  @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+  providerEventId String?
+  eventType  String
+  payload    Json?
+  createdAt  DateTime @default(now())
+
+  @@unique([paymentId, providerEventId])
+  @@index([paymentId])
 }
 
 model BookingStatusHistory {
@@ -309,16 +394,20 @@ model Notification {
 }
 
 model Incident {
-  id             String           @id @default(cuid())
-  bookingId      String?
-  booking        Booking?         @relation(fields: [bookingId], references: [id])
-  status         IncidentStatus   @default(OPEN)
-  severity       IncidentSeverity @default(medium)
-  reason         String
-  assigneeId     String?
-  snoozedUntil   DateTime?
-  createdAt      DateTime         @default(now())
-  updatedAt      DateTime         @updatedAt
+  id               String           @id @default(cuid())
+  bookingId        String?
+  booking          Booking?         @relation(fields: [bookingId], references: [id])
+  status           IncidentStatus   @default(OPEN)
+  severity         IncidentSeverity @default(medium)
+  reason           String
+  assigneeId       String?
+  ownerAdminName   String?
+  acknowledgedAt   DateTime?
+  snoozedUntil     DateTime?
+  resolvedAt       DateTime?
+  lastEscalatedAt  DateTime?
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
 
   @@index([status])
   @@index([bookingId])

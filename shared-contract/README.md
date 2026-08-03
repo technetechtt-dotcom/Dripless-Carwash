@@ -1,69 +1,26 @@
 # Shared Contract Runtime
 
-The shared API layer supports two modes:
+Shared API client used by Customer, Driver, and Ops Admin.
 
-1. **Mock mode** (default): uses in-browser mocked persistence for local demos.
-2. **Remote mode**: uses HTTP API endpoints when a base URL is configured.
+## Modes
+
+1. **Remote mode (default for real runs):** requires `VITE_API_BASE_URL` (or runtime base URL).
+2. **Mock mode (UI-only demos):** explicitly set `VITE_USE_MOCK_API=true`.
+
+Remote mode fails closed if no base URL is configured and mock is not enabled.
 
 ## Configure Remote Mode
 
-Set a base URL at runtime:
+- Env: `VITE_API_BASE_URL=http://localhost:4000`
+- Runtime: `apiRuntimeConfig.setApiBaseUrl("https://api.example.com")`
+- Or set `window.__DRIPLESS_API_BASE_URL__` before boot
 
-- From app code: `apiRuntimeConfig.setApiBaseUrl("https://api.example.com")`
-- Or set `window.__DRIPLESS_API_BASE_URL__` before app boot.
+## Auth + refresh
 
-Clear it to return to mock mode:
+- Access tokens expire (backend default 15m); refresh is rotated via `POST /auth/refresh`
+- Failed authenticated calls retry once after refresh rotation
+- Session payload may include `emailVerified` and `mustChangePassword`
 
-`apiRuntimeConfig.clearApiBaseUrl()`
+## Endpoint surface (remote)
 
-## Expected Endpoint Contract
-
-### Auth
-- `POST /auth/customer/login`
-- `POST /auth/customer/signup`
-- `POST /auth/driver/login`
-- `POST /auth/driver/signup`
-- `POST /auth/ops-admin/login`
-
-Auth responses are expected to return:
-
-```json
-{
-  "session": {
-    "tokens": {
-      "accessToken": "string",
-      "refreshToken": "string",
-      "expiresAt": 0
-    },
-    "payload": {
-      "userId": "string",
-      "role": "customer|driver|ops_admin",
-      "email": "string"
-    }
-  },
-  "profile": {}
-}
-```
-
-### Bookings / Jobs
-- `POST /bookings`
-- `POST /driver/jobs/incoming`
-- `PATCH /bookings/:bookingId/status`
-- `GET /bookings?customerId=...`
-
-### Ops Admin
-- `GET /ops/dashboard/summary`
-- `GET /ops/customers`
-- `GET /ops/drivers`
-- `GET /ops/bookings`
-- `POST /ops/notifications/broadcast`
-
-### Notifications
-- `GET /notifications?role=...&userId=...`
-- `POST /notifications`
-
-## Authorization
-
-When a session exists, requests include:
-
-`Authorization: Bearer <accessToken>`
+Auth, bookings ownership/pricing, driver location/jobs, ops dashboard, specials, notifications, payments intent, evidence upload are provided by `backend-api`. See `backend-api/openapi.yaml`.

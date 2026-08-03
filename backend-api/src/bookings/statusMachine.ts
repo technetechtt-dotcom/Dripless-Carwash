@@ -2,7 +2,7 @@ import type { BookingStatus } from '@prisma/client';
 import { HttpError } from '../middleware/error.js';
 
 const TRANSITIONS: Record<BookingStatus, BookingStatus[]> = {
-  PENDING: ['CONFIRMED', 'CANCELLED'],
+  PENDING: ['CONFIRMED', 'CANCELLED', 'EN_ROUTE'],
   CONFIRMED: ['EN_ROUTE', 'CANCELLED', 'PENDING'],
   EN_ROUTE: ['ARRIVED', 'CANCELLED'],
   ARRIVED: ['IN_PROGRESS', 'CANCELLED'],
