@@ -21,12 +21,15 @@ export interface SessionTokens {
   accessToken: string;
   refreshToken: string;
   expiresAt: number;
+  refreshExpiresAt?: number;
 }
 
 export interface SessionPayload {
   userId: string;
   role: AppRole;
   email: string;
+  emailVerified?: boolean;
+  mustChangePassword?: boolean;
 }
 
 export interface AuthSession {

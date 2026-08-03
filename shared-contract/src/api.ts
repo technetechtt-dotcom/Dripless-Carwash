@@ -4,6 +4,7 @@ import {
   getCustomerProfile,
   getDriverProfile,
   getOpsAdminProfile,
+  isAccessTokenFresh,
   saveCustomerProfile,
   saveDriverProfile,
   saveOpsAdminProfile,
@@ -54,7 +55,8 @@ interface BackendState {
 }
 
 const STATE_KEY = 'dripless_mock_backend_state_v1';
-const SESSION_TTL_MS = 1000 * 60 * 60 * 8;
+const SESSION_TTL_MS = 1000 * 60 * 15;
+const REFRESH_TTL_MS = 1000 * 60 * 60 * 24 * 7;
 const API_BASE_URL_STORAGE_KEY = 'dripless_api_base_url';
 const MAX_AUTO_DISPATCH_ATTEMPTS = 3;
 const DEFAULT_OPS_PERMISSIONS = [
@@ -80,7 +82,19 @@ const createId = (prefix: string) =>
 
 const nowIso = () => new Date().toISOString();
 
+const readViteEnv = (key: string): string | undefined => {
+  try {
+    const meta = import.meta as ImportMeta & { env?: Record<string, string | undefined> };
+    return meta.env?.[key];
+  } catch {
+    return undefined;
+  }
+};
+
+const useMockApi = (): boolean => readViteEnv('VITE_USE_MOCK_API') === 'true';
+
 const getApiBaseUrl = (): string => {
+  const fromEnv = readViteEnv('VITE_API_BASE_URL');
   const fromWindow =
     typeof window !== 'undefined' ?
     (window as unknown as { __DRIPLESS_API_BASE_URL__?: string }).
@@ -90,11 +104,20 @@ const getApiBaseUrl = (): string => {
     typeof localStorage !== 'undefined' ?
     localStorage.getItem(API_BASE_URL_STORAGE_KEY) || undefined :
     undefined;
-  const url = fromWindow || fromStorage || '';
+  const url = fromWindow || fromStorage || fromEnv || '';
   return url.replace(/\/+$/, '');
 };
 
-const hasRemoteApi = () => Boolean(getApiBaseUrl());
+const hasRemoteApi = () => !useMockApi() && Boolean(getApiBaseUrl());
+
+const requireRemoteOrMock = () => {
+  if (useMockApi()) return;
+  if (!getApiBaseUrl()) {
+    throw new Error(
+      'Remote API is required. Set VITE_API_BASE_URL, or VITE_USE_MOCK_API=true for UI-only demos.'
+    );
+  }
+};
 
 const readRemoteError = async (response: Response): Promise<string> => {
   try {
@@ -105,12 +128,48 @@ const readRemoteError = async (response: Response): Promise<string> => {
   }
 };
 
+let refreshInFlight: Promise<boolean> | null = null;
+
+const rotateRefreshSession = async (): Promise<boolean> => {
+  if (refreshInFlight) return refreshInFlight;
+  refreshInFlight = (async () => {
+    const session = getActiveSession();
+    if (!session?.tokens.refreshToken) return false;
+    const baseUrl = getApiBaseUrl();
+    if (!baseUrl) return false;
+    try {
+      const response = await fetch(`${baseUrl}/auth/refresh`, {
+        method: 'POST',
+        headers: {
+          Accept: 'application/json',
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ refreshToken: session.tokens.refreshToken })
+      });
+      if (!response.ok) {
+        clearSession();
+        return false;
+      }
+      const body = (await response.json()) as { session: AuthSession };
+      saveSession(body.session);
+      return true;
+    } catch {
+      clearSession();
+      return false;
+    } finally {
+      refreshInFlight = null;
+    }
+  })();
+  return refreshInFlight;
+};
+
 const requestApi = async <T>(
   path: string,
   options: {
     method?: 'GET' | 'POST' | 'PATCH' | 'DELETE';
     body?: unknown;
     token?: string;
+    retryOnAuth?: boolean;
   } = {}
 ): Promise<T> => {
   const baseUrl = getApiBaseUrl();
@@ -134,6 +193,23 @@ const requestApi = async <T>(
     body: options.body !== undefined ? JSON.stringify(options.body) : undefined
   });
 
+  if (
+    response.status === 401 &&
+    options.retryOnAuth !== false &&
+    path !== '/auth/refresh' &&
+    !path.startsWith('/auth/')
+  ) {
+    const rotated = await rotateRefreshSession();
+    if (rotated) {
+      const nextToken = getActiveSession()?.tokens.accessToken;
+      return requestApi<T>(path, {
+        ...options,
+        token: nextToken ?? options.token,
+        retryOnAuth: false
+      });
+    }
+  }
+
   if (!response.ok) {
     throw new Error(await readRemoteError(response));
   }
@@ -145,8 +221,15 @@ const requestApi = async <T>(
   return (await response.json()) as T;
 };
 
-const getBearerToken = (): string | undefined =>
-  getActiveSession()?.tokens.accessToken;
+const getBearerToken = (): string | undefined => {
+  const session = getActiveSession();
+  if (!session) return undefined;
+  if (!isAccessTokenFresh()) {
+    // Fire-and-forget rotation; callers that hit 401 will retry via requestApi
+    void rotateRefreshSession();
+  }
+  return getActiveSession()?.tokens.accessToken ?? session.tokens.accessToken;
+};
 
 export const apiRuntimeConfig = {
   getApiBaseUrl,
@@ -157,7 +240,8 @@ export const apiRuntimeConfig = {
   clearApiBaseUrl: () => {
     localStorage.removeItem(API_BASE_URL_STORAGE_KEY);
   },
-  isRemoteEnabled: hasRemoteApi
+  isRemoteEnabled: hasRemoteApi,
+  isMockEnabled: useMockApi
 };
 
 const defaultState = (): BackendState => ({
@@ -182,10 +266,11 @@ const ensureDefaultOpsAdmin = (state: BackendState): BackendState => {
     return state;
   }
 
+  // Mock-only demo admin — never a production seed email.
   const admin: OpsAdminProfile = {
-    id: 'ops_admin_001',
+    id: 'ops_admin_demo_001',
     name: 'Operations Admin',
-    email: 'admin@driplesswash.com',
+    email: 'ops@demo.dripless.local',
     permissions: DEFAULT_OPS_PERMISSIONS
   };
 
@@ -276,20 +361,33 @@ const saveState = (state: BackendState) => {
   localStorage.setItem(STATE_KEY, JSON.stringify(state));
 };
 
+const randomToken = (bytes = 32): string => {
+  const arr = new Uint8Array(bytes);
+  if (typeof crypto !== 'undefined' && crypto.getRandomValues) {
+    crypto.getRandomValues(arr);
+  } else {
+    for (let i = 0; i < arr.length; i += 1) arr[i] = Math.floor(Math.random() * 256);
+  }
+  return Array.from(arr, (b) => b.toString(16).padStart(2, '0')).join('');
+};
+
 const createSession = (
   userId: string,
   role: AppRole,
   email: string
 ): AuthSession => ({
   tokens: {
-    accessToken: `dripless.${role}.${userId}.${Date.now().toString(36)}`,
-    refreshToken: `dripless.refresh.${userId}.${Math.random().toString(36).slice(2, 8)}`,
-    expiresAt: Date.now() + SESSION_TTL_MS
+    accessToken: randomToken(32),
+    refreshToken: randomToken(32),
+    expiresAt: Date.now() + SESSION_TTL_MS,
+    refreshExpiresAt: Date.now() + REFRESH_TTL_MS
   },
   payload: {
     userId,
     role,
-    email
+    email,
+    emailVerified: true,
+    mustChangePassword: false
   }
 });
 
@@ -522,13 +620,15 @@ const selectDriverForBooking = (
 
 export const authApi = {
   async loginCustomer(email: string, password: string): Promise<CustomerProfile> {
+    requireRemoteOrMock();
     if (hasRemoteApi()) {
       const remote = await requestApi<{
         session: AuthSession;
         profile: CustomerProfile;
       }>('/auth/customer/login', {
         method: 'POST',
-        body: { email, password }
+        body: { email, password },
+        retryOnAuth: false
       });
       saveSession(remote.session);
       saveCustomerProfile(remote.profile);
@@ -542,29 +642,14 @@ export const authApi = {
 
     const state = loadState();
     const existing = state.customerProfiles.find((profile) => profile.email === email);
-    const profile: CustomerProfile =
-      existing ?? {
-        id: createId('cust'),
-        name: 'Alex Johnson',
-        email,
-        phone: '+1 (555) 123-4567',
-        address: '123 Green Street, Eco City',
-        walletBalance: 45.5,
-        ecoPoints: 1250,
-        status: 'ACTIVE',
-        createdAt: nowIso(),
-        updatedAt: nowIso()
-      };
-
     if (!existing) {
-      state.customerProfiles.unshift(profile);
-      saveState(state);
+      throw new Error('Invalid credentials');
     }
 
-    const session = createSession(profile.id, 'customer', profile.email);
+    const session = createSession(existing.id, 'customer', existing.email);
     saveSession(session);
-    saveCustomerProfile(profile);
-    return profile;
+    saveCustomerProfile(existing);
+    return existing;
   },
 
   async signupCustomer(
@@ -572,13 +657,15 @@ export const authApi = {
     email: string,
     password: string
   ): Promise<CustomerProfile> {
+    requireRemoteOrMock();
     if (hasRemoteApi()) {
       const remote = await requestApi<{
         session: AuthSession;
         profile: CustomerProfile;
       }>('/auth/customer/signup', {
         method: 'POST',
-        body: { name, email, password }
+        body: { name, email, password },
+        retryOnAuth: false
       });
       saveSession(remote.session);
       saveCustomerProfile(remote.profile);
@@ -611,13 +698,15 @@ export const authApi = {
   },
 
   async loginDriver(email: string, password: string): Promise<DriverProfile> {
+    requireRemoteOrMock();
     if (hasRemoteApi()) {
       const remote = await requestApi<{
         session: AuthSession;
         profile: DriverProfile;
       }>('/auth/driver/login', {
         method: 'POST',
-        body: { email, password }
+        body: { email, password },
+        retryOnAuth: false
       });
       saveSession(remote.session);
       saveDriverProfile(remote.profile);
@@ -631,33 +720,14 @@ export const authApi = {
 
     const state = loadState();
     const existing = state.driverProfiles.find((profile) => profile.email === email);
-    const profile: DriverProfile =
-      existing ?? {
-        id: createId('driver'),
-        name: 'Marcus Johnson',
-        email,
-        vehicle: 'Toyota Camry Hybrid',
-        rating: 4.92,
-        ecoPoints: 1250,
-        memberSince: '2021-03-15',
-        avatarUrl: 'https://i.pravatar.cc/150?u=driver',
-        status: 'ACTIVE',
-        verificationStatus: 'VERIFIED',
-        activeBookingId: null,
-        lastKnownLocation: null,
-        createdAt: nowIso(),
-        updatedAt: nowIso()
-      };
-
     if (!existing) {
-      state.driverProfiles.unshift(profile);
-      saveState(state);
+      throw new Error('Invalid credentials');
     }
 
-    const session = createSession(profile.id, 'driver', profile.email);
+    const session = createSession(existing.id, 'driver', existing.email);
     saveSession(session);
-    saveDriverProfile(profile);
-    return profile;
+    saveDriverProfile(existing);
+    return existing;
   },
 
   async signupDriver(
@@ -666,13 +736,15 @@ export const authApi = {
     password: string,
     vehicle: string
   ): Promise<DriverProfile> {
+    requireRemoteOrMock();
     if (hasRemoteApi()) {
       const remote = await requestApi<{
         session: AuthSession;
         profile: DriverProfile;
       }>('/auth/driver/signup', {
         method: 'POST',
-        body: { name, email, password, vehicle }
+        body: { name, email, password, vehicle },
+        retryOnAuth: false
       });
       saveSession(remote.session);
       saveDriverProfile(remote.profile);
@@ -722,13 +794,15 @@ export const authApi = {
   },
 
   async loginOpsAdmin(email: string, password: string): Promise<OpsAdminProfile> {
+    requireRemoteOrMock();
     if (hasRemoteApi()) {
       const remote = await requestApi<{
         session: AuthSession;
         profile: OpsAdminProfile;
       }>('/auth/ops-admin/login', {
         method: 'POST',
-        body: { email, password }
+        body: { email, password },
+        retryOnAuth: false
       });
       saveSession(remote.session);
       saveOpsAdminProfile(remote.profile);
@@ -754,7 +828,24 @@ export const authApi = {
     return getOpsAdminProfile();
   },
 
-  logout() {
+  async refreshSession(): Promise<boolean> {
+    if (!hasRemoteApi()) return Boolean(getActiveSession());
+    return rotateRefreshSession();
+  },
+
+  async logout() {
+    if (hasRemoteApi()) {
+      const token = getBearerToken();
+      try {
+        await requestApi<void>('/auth/logout', {
+          method: 'POST',
+          token,
+          retryOnAuth: false
+        });
+      } catch {
+        // Always clear local session even if remote revoke fails.
+      }
+    }
     clearSession();
   }
 };

@@ -50,7 +50,18 @@ export const getActiveSession = (): AuthSession | null => {
 
 export const isSessionValid = (): boolean => {
   const session = getActiveSession();
-  return Boolean(session && session.tokens.expiresAt > Date.now());
+  if (!session) return false;
+  const refreshExpiresAt = session.tokens.refreshExpiresAt;
+  if (typeof refreshExpiresAt === 'number') {
+    return refreshExpiresAt > Date.now();
+  }
+  // Fallback: access token still valid, or refresh token present for rotation
+  return Boolean(session.tokens.refreshToken);
+};
+
+export const isAccessTokenFresh = (): boolean => {
+  const session = getActiveSession();
+  return Boolean(session && session.tokens.expiresAt > Date.now() + 30_000);
 };
 
 export const clearSession = () => {

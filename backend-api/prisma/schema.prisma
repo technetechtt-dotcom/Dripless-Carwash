@@ -1,0 +1,385 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  customer
+  driver
+  ops_admin
+}
+
+enum AccountStatus {
+  ACTIVE
+  SUSPENDED
+  PENDING_REVIEW
+}
+
+enum DriverVerificationStatus {
+  PENDING
+  VERIFIED
+  REJECTED
+}
+
+enum BookingStatus {
+  PENDING
+  CONFIRMED
+  EN_ROUTE
+  ARRIVED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+enum SpecialAudience {
+  customer
+  driver
+  both
+}
+
+enum SpecialServiceScope {
+  ALL
+  CAR_WASH
+  TAXI
+  DELIVERY
+  WINDOW_SOLAR
+  HOME_SERVICE
+}
+
+enum SpecialDiscountType {
+  PERCENT
+  FIXED
+}
+
+enum IncidentStatus {
+  OPEN
+  ACKNOWLEDGED
+  SNOOZED
+  RESOLVED
+}
+
+enum IncidentSeverity {
+  low
+  medium
+  high
+}
+
+model User {
+  id                   String        @id @default(cuid())
+  email                String        @unique
+  passwordHash         String
+  role                 UserRole
+  emailVerifiedAt      DateTime?
+  mustChangePassword   Boolean       @default(false)
+  failedLoginCount     Int           @default(0)
+  lockedUntil          DateTime?
+  mfaEnabled           Boolean       @default(false)
+  createdAt            DateTime      @default(now())
+  updatedAt            DateTime      @updatedAt
+
+  customerProfile      CustomerProfile?
+  driverProfile        DriverProfile?
+  opsProfile           OpsAdminProfile?
+  sessions             Session[]
+  refreshTokens        RefreshToken[]
+  emailTokens          EmailToken[]
+  passwordResetTokens  PasswordResetToken[]
+  auditLogs            AuditLog[]    @relation("AuditActor")
+
+  @@index([role])
+}
+
+model CustomerProfile {
+  id           String        @id
+  userId       String        @unique
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name         String
+  phone        String?
+  status       AccountStatus @default(ACTIVE)
+  walletBalance Float        @default(0)
+  ecoPoints    Int           @default(0)
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  bookings     Booking[]
+  vehicles     Vehicle[]
+}
+
+model DriverProfile {
+  id                   String                   @id
+  userId               String                   @unique
+  user                 User                     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name                 String
+  phone                String?
+  vehicle              String
+  plateNumber          String?
+  rating               Float                    @default(5)
+  ecoPoints            Int                      @default(0)
+  status               AccountStatus            @default(PENDING_REVIEW)
+  verificationStatus   DriverVerificationStatus @default(PENDING)
+  activeBookingId      String?
+  avatarUrl            String?
+  memberSince          DateTime                 @default(now())
+  createdAt            DateTime                 @default(now())
+  updatedAt            DateTime                 @updatedAt
+  location             DriverLocation?
+  assignments          BookingAssignment[]
+  bookings             Booking[]                @relation("DriverBookings")
+}
+
+model OpsAdminProfile {
+  id          String   @id
+  userId      String   @unique
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name        String
+  permissions String[]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model Vehicle {
+  id         String          @id @default(cuid())
+  customerId String
+  customer   CustomerProfile @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  label      String
+  make       String?
+  model      String?
+  year       Int?
+  plate      String?
+  sizeClass  String          @default("STANDARD")
+  createdAt  DateTime        @default(now())
+  updatedAt  DateTime        @updatedAt
+
+  @@index([customerId])
+}
+
+model Service {
+  id          String          @id @default(cuid())
+  slug        String          @unique
+  name        String
+  description String?
+  active      Boolean         @default(true)
+  options     ServiceOption[]
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+}
+
+model ServiceOption {
+  id              String   @id @default(cuid())
+  serviceId       String
+  service         Service  @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+  slug            String
+  name            String
+  basePrice       Float
+  ecoPointsAward  Int      @default(0)
+  durationMinutes Int      @default(45)
+  active          Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@unique([serviceId, slug])
+}
+
+model Booking {
+  id                     String        @id @default(cuid())
+  customerId             String
+  customer               CustomerProfile @relation(fields: [customerId], references: [id])
+  driverId               String?
+  driver                 DriverProfile?  @relation("DriverBookings", fields: [driverId], references: [id])
+  serviceSlug            String
+  serviceName            String
+  optionSlug             String
+  optionName             String
+  status                 BookingStatus @default(PENDING)
+  price                  Float
+  basePrice              Float
+  discountAmount         Float         @default(0)
+  promoCode              String?
+  ecoPoints              Int           @default(0)
+  pickupLocation         String
+  destinationLocation    String?
+  pickupLat              Float?
+  pickupLng              Float?
+  destinationLat         Float?
+  destinationLng         Float?
+  paymentMethod          String?
+  paymentStatus          String        @default("UNPAID")
+  pooledWithBookingId    String?
+  dispatchAttemptCount   Int           @default(0)
+  dispatchReason         String?
+  scheduledAt            DateTime?
+  createdAt              DateTime      @default(now())
+  updatedAt              DateTime      @updatedAt
+  statusHistory          BookingStatusHistory[]
+  assignments            BookingAssignment[]
+  incidents              Incident[]
+
+  @@index([customerId])
+  @@index([driverId])
+  @@index([status])
+}
+
+model BookingStatusHistory {
+  id         String        @id @default(cuid())
+  bookingId  String
+  booking    Booking       @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  fromStatus BookingStatus?
+  toStatus   BookingStatus
+  actorId    String?
+  actorRole  String?
+  reason     String?
+  createdAt  DateTime      @default(now())
+
+  @@index([bookingId, createdAt])
+}
+
+model BookingAssignment {
+  id         String        @id @default(cuid())
+  bookingId  String
+  booking    Booking       @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  driverId   String
+  driver     DriverProfile @relation(fields: [driverId], references: [id])
+  reason     String?
+  createdAt  DateTime      @default(now())
+
+  @@index([bookingId])
+  @@index([driverId])
+}
+
+model DriverLocation {
+  id        String        @id @default(cuid())
+  driverId  String        @unique
+  driver    DriverProfile @relation(fields: [driverId], references: [id], onDelete: Cascade)
+  lat       Float
+  lng       Float
+  heading   Float?
+  speedKph  Float?
+  updatedAt DateTime      @updatedAt
+}
+
+model Promotion {
+  id                 String              @id @default(cuid())
+  title              String
+  description        String
+  promoCode          String              @unique
+  audience           SpecialAudience
+  serviceScope       SpecialServiceScope @default(ALL)
+  discountType       SpecialDiscountType
+  discountValue      Float
+  startsAt           DateTime
+  endsAt             DateTime
+  terms              String?
+  approved           Boolean             @default(false)
+  isActive           Boolean             @default(false)
+  approvedByAdminId  String?
+  approvedAt         DateTime?
+  redemptionCount    Int                 @default(0)
+  lastRedeemedAt     DateTime?
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+  redemptions        PromotionRedemption[]
+}
+
+model PromotionRedemption {
+  id          String    @id @default(cuid())
+  promotionId String
+  promotion   Promotion @relation(fields: [promotionId], references: [id], onDelete: Cascade)
+  userId      String
+  role        UserRole
+  createdAt   DateTime  @default(now())
+
+  @@index([promotionId])
+  @@index([userId])
+}
+
+model Notification {
+  id        String   @id @default(cuid())
+  userId    String?
+  role      UserRole?
+  title     String
+  message   String
+  type      String   @default("info")
+  read      Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@index([userId, createdAt])
+}
+
+model Incident {
+  id             String           @id @default(cuid())
+  bookingId      String?
+  booking        Booking?         @relation(fields: [bookingId], references: [id])
+  status         IncidentStatus   @default(OPEN)
+  severity       IncidentSeverity @default(medium)
+  reason         String
+  assigneeId     String?
+  snoozedUntil   DateTime?
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+
+  @@index([status])
+  @@index([bookingId])
+}
+
+model Session {
+  id               String   @id @default(cuid())
+  userId           String
+  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accessTokenHash  String   @unique
+  expiresAt        DateTime
+  revokedAt        DateTime?
+  createdAt        DateTime @default(now())
+
+  @@index([userId])
+}
+
+model RefreshToken {
+  id        String    @id @default(cuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash String    @unique
+  expiresAt DateTime
+  revokedAt DateTime?
+  replacedBy String?
+  createdAt DateTime  @default(now())
+
+  @@index([userId])
+}
+
+model EmailToken {
+  id        String    @id @default(cuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+}
+
+model PasswordResetToken {
+  id        String    @id @default(cuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  actorId   String?
+  actor     User?    @relation("AuditActor", fields: [actorId], references: [id])
+  actorRole String?
+  action    String
+  targetId  String?
+  message   String
+  metadata  Json?
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([actorId])
+}

@@ -1,0 +1,167 @@
+openapi: 3.0.3
+info:
+  title: Dripless Backend API
+  version: 0.2.0
+  description: Auth and bookings skeleton for the secured PostgreSQL-backed API.
+servers:
+  - url: http://localhost:4000
+paths:
+  /auth/customer/signup:
+    post:
+      summary: Create a customer account
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CustomerSignup'
+      responses:
+        '201':
+          description: Account created with session
+  /auth/customer/login:
+    post:
+      summary: Customer login
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Login'
+      responses:
+        '200':
+          description: Authenticated session
+        '401':
+          description: Invalid credentials
+  /auth/driver/signup:
+    post:
+      summary: Create a driver account
+      responses:
+        '201':
+          description: Account created with session
+  /auth/driver/login:
+    post:
+      summary: Driver login
+      responses:
+        '200':
+          description: Authenticated session
+  /auth/ops-admin/login:
+    post:
+      summary: Ops admin login
+      responses:
+        '200':
+          description: Authenticated session
+  /auth/refresh:
+    post:
+      summary: Rotate refresh token and issue new access token
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [refreshToken]
+              properties:
+                refreshToken:
+                  type: string
+      responses:
+        '200':
+          description: Rotated session
+        '401':
+          description: Invalid or revoked refresh token
+  /auth/logout:
+    post:
+      summary: Revoke current access session
+      security:
+        - bearerAuth: []
+      responses:
+        '204':
+          description: Logged out
+  /auth/verify-email:
+    post:
+      summary: Verify email with token
+      responses:
+        '200':
+          description: Email verified
+  /auth/password-reset/request:
+    post:
+      summary: Request password reset
+      responses:
+        '200':
+          description: Accepted
+  /auth/password-reset/confirm:
+    post:
+      summary: Confirm password reset
+      responses:
+        '200':
+          description: Password updated
+  /bookings:
+    post:
+      summary: Create booking (server-priced, ownership enforced)
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateBooking'
+      responses:
+        '201':
+          description: Booking created
+        '403':
+          description: Email not verified or account not bookable
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+  schemas:
+    Login:
+      type: object
+      required: [email, password]
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          minLength: 6
+    CustomerSignup:
+      type: object
+      required: [name, email, password]
+      properties:
+        name:
+          type: string
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          minLength: 8
+        phone:
+          type: string
+    CreateBooking:
+      type: object
+      required: [pickupLocation]
+      properties:
+        pickupLocation:
+          type: string
+        serviceSlug:
+          type: string
+        optionSlug:
+          type: string
+        pickupCoordinates:
+          type: object
+          properties:
+            lat:
+              type: number
+            lng:
+              type: number
+        promoCode:
+          type: string
+        price:
+          type: number
+          description: Ignored; server catalogue pricing is authoritative
+        customerId:
+          type: string
+          description: Ignored for customer role; forced from session

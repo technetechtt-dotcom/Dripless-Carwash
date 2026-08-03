@@ -14,7 +14,7 @@ interface OpsAuthContextType {
   isLoading: boolean;
   isAuthenticated: boolean;
   login: (email: string, password: string) => Promise<void>;
-  logout: () => void;
+  logout: () => Promise<void>;
 }
 
 const OpsAuthContext = createContext<OpsAuthContextType | undefined>(undefined);
@@ -49,8 +49,8 @@ export const OpsAuthProvider = ({ children }: { children: ReactNode }) => {
     }
   };
 
-  const logout = () => {
-    authApi.logout();
+  const logout = async () => {
+    await authApi.logout();
     setAdmin(null);
   };
 

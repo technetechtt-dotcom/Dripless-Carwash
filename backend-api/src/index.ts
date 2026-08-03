@@ -1,0 +1,48 @@
+import { createApp } from './app.js';
+import { env } from './config/env.js';
+import { prisma } from './db/prisma.js';
+import { hashPassword } from './auth/password.js';
+import { DEFAULT_OPS_PERMISSIONS } from './auth/permissions.js';
+
+async function maybeBootstrapFromEnv() {
+  const email = env.BOOTSTRAP_ADMIN_EMAIL?.trim().toLowerCase();
+  const password = env.BOOTSTRAP_ADMIN_PASSWORD || '';
+  if (!email || password.length < 12) return;
+
+  const adminCount = await prisma.user.count({ where: { role: 'ops_admin' } });
+  if (adminCount > 0) return;
+
+  const passwordHash = await hashPassword(password);
+  await prisma.user.create({
+    data: {
+      email,
+      passwordHash,
+      role: 'ops_admin',
+      mustChangePassword: true,
+      emailVerifiedAt: new Date(),
+      opsProfile: {
+        create: {
+          id: `ops_${Date.now().toString(36)}`,
+          name: 'Bootstrap Admin',
+          permissions: [...DEFAULT_OPS_PERMISSIONS]
+        }
+      }
+    }
+  });
+  console.log(`Bootstrapped ops admin from env: ${email}`);
+}
+
+async function main() {
+  await maybeBootstrapFromEnv();
+  const app = createApp();
+  app.listen(env.PORT, () => {
+    console.log(`Dripless backend API running on port ${env.PORT}`);
+    console.log(`demoMode=${env.demoMode} env=${env.NODE_ENV}`);
+  });
+}
+
+main().catch(async (error) => {
+  console.error(error);
+  await prisma.$disconnect();
+  process.exit(1);
+});

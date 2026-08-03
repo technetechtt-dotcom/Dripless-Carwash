@@ -4,9 +4,11 @@ import { useOpsAuth } from '../contexts/OpsAuthContext';
 
 export const LoginPage = () => {
   const { login, isLoading } = useOpsAuth();
-  const [email, setEmail] = useState('admin@driplesswash.com');
-  const [password, setPassword] = useState('admin1234');
-  const [apiBaseUrl, setApiBaseUrl] = useState(apiRuntimeConfig.getApiBaseUrl());
+  const [email, setEmail] = useState('ops@demo.dripless.local');
+  const [password, setPassword] = useState('DemoPass123!');
+  const [apiBaseUrl, setApiBaseUrl] = useState(
+    apiRuntimeConfig.getApiBaseUrl() || 'http://localhost:4000'
+  );
   const [error, setError] = useState('');
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {

@@ -1,33 +1,61 @@
 # Dripless Backend API
 
-Shared backend for all three apps:
-- Customer app
-- Driver app
-- Ops Admin dashboard
+Secure TypeScript API for Customer, Driver, and Ops Admin apps.
+
+## Stack
+
+- Express + Zod + Helmet + CORS allowlist
+- Prisma + Neon/Postgres
+- bcrypt passwords, opaque access tokens, hashed refresh tokens with rotation
 
 ## Run locally
 
 ```bash
+cp .env.example .env
+# set DATABASE_URL to your Neon/Postgres connection string
 npm install
+npx prisma migrate dev
+npm run db:seed   # only when DEMO_MODE=true
 npm run dev
 ```
 
 Default port: `4000`
 
-## Data persistence
+## Demo seed (DEMO_MODE=true only)
 
-State is saved to `backend-api/data/state.json`.
+- `customer@demo.dripless.local` / `DemoPass123!`
+- `driver@demo.dripless.local` / `DemoPass123!`
+- `ops@demo.dripless.local` / `DemoPass123!`
 
-## Auth seed
+There is no production admin seed in application code. Bootstrap the first ops admin with:
 
-Default ops admin:
-- email: `admin@driplesswash.com`
-- password: any 8+ chars (example: `admin1234`)
+```bash
+npm run bootstrap:admin -- --email you@company.com --password 'StrongPass123!'
+```
+
+Or set `BOOTSTRAP_ADMIN_EMAIL` + `BOOTSTRAP_ADMIN_PASSWORD` on first boot when zero admins exist.
 
 ## Wire apps
 
 Create `.env` in each app from `.env.example`:
 
-`VITE_API_BASE_URL=http://localhost:4000`
+```
+VITE_API_BASE_URL=http://localhost:4000
+```
 
-Then run each app normally; they will all communicate through this backend.
+UI-only mock (no remote API) requires an explicit opt-in:
+
+```
+VITE_USE_MOCK_API=true
+```
+
+## Android release signing
+
+Customer and Driver Android release builds **fail** if `android/keystore.properties` is missing. Provide CI secrets for `storeFile`, `storePassword`, `keyAlias`, and `keyPassword`. Do not use debug signing for release.
+
+## Tests
+
+```bash
+npm run typecheck
+npm run test
+```
