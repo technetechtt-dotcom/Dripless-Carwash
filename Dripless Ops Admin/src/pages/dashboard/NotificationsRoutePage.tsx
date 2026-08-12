@@ -1,6 +1,7 @@
-import { DashboardPage } from '../DashboardPage';
+import { Navigate } from 'react-router-dom';
+import { getDashboardTabPath } from './navigation';
 
-/** Dedicated Notifications page for /dashboard/notifications */
+/** Legacy notifications route → Inbox */
 export const NotificationsRoutePage = () => (
-  <DashboardPage tabOverride="notifications" />
+  <Navigate to={getDashboardTabPath('inbox')} replace />
 );

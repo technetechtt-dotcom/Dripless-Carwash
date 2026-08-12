@@ -20,10 +20,14 @@ import type {
   OpsDashboardSummary
 } from '@shared/types';
 import { useOpsAuth } from '../contexts/OpsAuthContext';
-import { OpsSidebar } from '../components/OpsSidebar';
+import { OpsShell, type NavBadgeMap } from '../components/OpsShell';
 import {
   dashboardTabs,
   getDashboardTabPath,
+  getTabMeta,
+  presetLabel,
+  presetLandingTab,
+  tabRequiresAnyPermission,
   type DashboardTab,
   type OpsPreset
 } from './dashboard/navigation';
@@ -47,13 +51,18 @@ import {
   toInputDate,
   toStartOfDayIso
 } from './dashboard/utils';
-import { OverviewSection } from './dashboard/sections/OverviewSection';
-import { NotificationsSection } from './dashboard/sections/NotificationsSection';
+import { formatBookingRef } from './dashboard/formatters';
+import { OverviewSection, type AttentionItem } from './dashboard/sections/OverviewSection';
 import { CustomersSection } from './dashboard/sections/CustomersSection';
 import { DriversSection } from './dashboard/sections/DriversSection';
 import { BookingsSection } from './dashboard/sections/BookingsSection';
 import { DispatchSection } from './dashboard/sections/DispatchSection';
 import { SpecialsSection } from './dashboard/sections/SpecialsSection';
+import { IncidentsSection } from './dashboard/sections/IncidentsSection';
+import { InboxSection } from './dashboard/sections/InboxSection';
+import { CommunicationsSection } from './dashboard/sections/CommunicationsSection';
+import { AuditSection } from './dashboard/sections/AuditSection';
+import { ReportsSection } from './dashboard/sections/ReportsSection';
 type DispatchLane = BookingStatus | 'UNASSIGNED' | 'DISPATCH_EXHAUSTED';
 type SlaAlertItem = {
   booking: BookingContract;
@@ -164,14 +173,16 @@ export const DashboardPage = ({ tabOverride }: DashboardPageProps) => {
   const [enableSoundAlerts, setEnableSoundAlerts] = useState(false);
   const [lastEscalatedAt, setLastEscalatedAt] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [lastSyncedAt, setLastSyncedAt] = useState<string | null>(null);
   const [feedback, setFeedback] = useState('');
   const [error, setError] = useState('');
+  const [globalSearch, setGlobalSearch] = useState('');
+  const [contextBookingId, setContextBookingId] = useState<string | null>(null);
   const lastAlertSignatureRef = useRef<string>('');
+  const hasLoadedRef = useRef(false);
 
-  const activeTabMeta = useMemo(
-    () => dashboardTabs.find((tab) => tab.key === activeTab) ?? dashboardTabs[0],
-    [activeTab]
-  );
+  const activeTabMeta = useMemo(() => getTabMeta(activeTab), [activeTab]);
 
   const navigateToTab = useCallback(
     (nextTab: DashboardTab) => {
@@ -192,24 +203,11 @@ export const DashboardPage = ({ tabOverride }: DashboardPageProps) => {
   const canViewIncidents = hasPermission('incidents:read');
   const canManageIncidents = hasPermission('incidents:manage');
   const canManageSpecials = hasPermission('specials:manage');
-  // Always expose every menu page; permissions gate content/actions inside each page.
-  const visibleTabs = useMemo(() => dashboardTabs, []);
 
   const canAccessActiveTab = useMemo(() => {
-    if (activeTab === 'customers') return canViewCustomers;
-    if (activeTab === 'drivers') return canViewDrivers;
-    if (activeTab === 'bookings') return canViewBookings;
-    if (activeTab === 'dispatch') return canViewBookings || canViewIncidents;
-    if (activeTab === 'specials') return canManageSpecials;
-    return true;
-  }, [
-    activeTab,
-    canManageSpecials,
-    canViewBookings,
-    canViewCustomers,
-    canViewDrivers,
-    canViewIncidents
-  ]);
+    const meta = getTabMeta(activeTab);
+    return tabRequiresAnyPermission(meta, admin?.permissions ?? []);
+  }, [activeTab, admin?.permissions]);
 
   const loadAnalytics = useCallback(async () => {
     if (!admin || !hasPermission('activity:read')) return;
@@ -226,7 +224,11 @@ export const DashboardPage = ({ tabOverride }: DashboardPageProps) => {
 
   const loadDashboard = useCallback(async () => {
     if (!admin) return;
-    setIsLoading(true);
+    if (!hasLoadedRef.current) {
+      setIsLoading(true);
+    } else {
+      setIsRefreshing(true);
+    }
     setError('');
     try {
       const [
@@ -262,10 +264,13 @@ export const DashboardPage = ({ tabOverride }: DashboardPageProps) => {
       setSpecials(specialsData);
       setActivity(activityData);
       setNotifications(notificationsData);
+      setLastSyncedAt(new Date().toISOString());
+      hasLoadedRef.current = true;
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : 'Failed to load dashboard');
     } finally {
       setIsLoading(false);
+      setIsRefreshing(false);
     }
   }, [
     admin,
@@ -484,19 +489,31 @@ export const DashboardPage = ({ tabOverride }: DashboardPageProps) => {
         if (bookingStatusFilter !== 'ALL' && booking.status !== bookingStatusFilter) return false;
         const needle = bookingQuery.trim().toLowerCase();
         if (!needle) return true;
+        if (needle === 'unassigned') {
+          return !booking.driverId && !['COMPLETED', 'CANCELLED'].includes(booking.status);
+        }
+        if (needle === 'late jobs' || needle === 'late') {
+          const ageMinutes = Math.floor((Date.now() - parseDateMs(booking.updatedAt)) / 60000);
+          return (
+            !['COMPLETED', 'CANCELLED'].includes(booking.status) &&
+            ageMinutes >= unassignedSlaMinutes
+          );
+        }
         return [
           booking.id,
+          formatBookingRef(booking),
           booking.customerName ?? '',
           booking.customerId ?? '',
           booking.driverId ?? '',
           booking.serviceName,
-          booking.optionName
+          booking.optionName,
+          booking.pickupLocation
         ]
           .join(' ')
           .toLowerCase()
           .includes(needle);
       }),
-    [sortedBookings, bookingStatusFilter, bookingQuery]
+    [sortedBookings, bookingStatusFilter, bookingQuery, unassignedSlaMinutes]
   );
 
   const filteredActivity = useMemo(
@@ -673,24 +690,46 @@ export const DashboardPage = ({ tabOverride }: DashboardPageProps) => {
   const latestExhaustedLabel = latestExhaustedUpdateAt ?
     new Date(latestExhaustedUpdateAt).toLocaleString() :
     null;
-  const exhaustedDispatchCardClassName =
-    exhaustedDispatchCount >= 3 ?
-      'card dispatch-exhausted-card-danger' :
-    exhaustedDispatchCount > 0 ?
-      'card dispatch-exhausted-card-warning' :
-      'card';
-  const visibleTabsWithBadges = useMemo(
-    () =>
-      visibleTabs.map((tab) =>
-        tab.key === 'dispatch' ?
-        {
-          ...tab,
-          badgeCount: exhaustedDispatchCount
-        } :
-        tab
-      ),
-    [exhaustedDispatchCount, visibleTabs]
+  const openIncidentCount = useMemo(
+    () => incidents.filter((incident) => incident.status !== 'RESOLVED').length,
+    [incidents]
   );
+  const criticalSlaCount = useMemo(
+    () => slaAlerts.filter((item) => item.severity === 'high').length,
+    [slaAlerts]
+  );
+  const unassignedCount = dispatchLanes.UNASSIGNED.length;
+  const navBadges = useMemo<NavBadgeMap>(() => {
+    const dispatchCount = exhaustedDispatchCount + criticalSlaCount + unassignedCount;
+    return {
+      dispatch: {
+        count: dispatchCount,
+        tone: dispatchCount >= 3 ? 'danger' : 'warning'
+      },
+      incidents: {
+        count: openIncidentCount,
+        tone: openIncidentCount >= 3 ? 'danger' : 'warning'
+      },
+      inbox: {
+        count: notifications.filter((item) => !item.read).length || notifications.length,
+        tone: 'warning'
+      },
+      unassigned: {
+        count: unassignedCount,
+        tone: unassignedCount > 0 ? 'warning' : 'warning'
+      },
+      critical: {
+        count: criticalSlaCount + exhaustedDispatchCount,
+        tone: 'danger'
+      }
+    };
+  }, [
+    criticalSlaCount,
+    exhaustedDispatchCount,
+    notifications,
+    openIncidentCount,
+    unassignedCount
+  ]);
 
   useEffect(() => {
     if (!isLiveMode) return;
@@ -773,33 +812,113 @@ export const DashboardPage = ({ tabOverride }: DashboardPageProps) => {
   const applyPreset = (nextPreset: OpsPreset) => {
     setPreset(nextPreset);
     if (nextPreset === 'dispatcher') {
-      navigateToTab('dispatch');
-      return;
+      setIsLiveMode(true);
+      setDispatchLaneFilter('UNASSIGNED');
+      setEnableSoundAlerts(true);
+      setIncidentQueueView('all');
+    } else if (nextPreset === 'support') {
+      setIsLiveMode(true);
+      setIncidentQueueView('mine');
+      setBookingStatusFilter('ALL');
+      setCustomerStatusFilter('ALL');
+    } else if (nextPreset === 'compliance') {
+      setIsLiveMode(false);
+      setDriverVerificationFilter('PENDING');
+      setDriverStatusFilter('ALL');
+    } else {
+      setIsLiveMode(true);
+      setDispatchLaneFilter('ALL');
+      setIncidentQueueView('all');
+      setDriverVerificationFilter('ALL');
+      setBookingStatusFilter('ALL');
     }
-    if (nextPreset === 'support') {
-      navigateToTab('customers');
-      return;
-    }
-    if (nextPreset === 'compliance') {
-      navigateToTab('drivers');
-      return;
-    }
-    navigateToTab('overview');
+    navigateToTab(presetLandingTab[nextPreset]);
+    setFeedback(
+      `Workspace: ${presetLabel[nextPreset]}. Layout and shortcuts updated — your permissions are unchanged.`
+    );
   };
 
-  const updateBooking = async (bookingId: string, status: BookingStatus) => {
+  const runGlobalSearch = () => {
+    const needle = globalSearch.trim().toLowerCase();
+    if (!needle) return;
+
+    if (needle === 'unassigned' || needle === 'late jobs') {
+      setDispatchLaneFilter(needle === 'unassigned' ? 'UNASSIGNED' : 'ALL');
+      if (needle === 'late jobs') setBookingStatusFilter('ALL');
+      navigateToTab('dispatch');
+      setFeedback(
+        needle === 'unassigned' ? 'Showing unassigned dispatch lane.' : 'Opened dispatch for late jobs review.'
+      );
+      return;
+    }
+
+    const bookingHit = sortedBookings.find((booking) => {
+      const ref = formatBookingRef(booking).toLowerCase();
+      return (
+        booking.id.toLowerCase().includes(needle) ||
+        ref.includes(needle) ||
+        (booking.customerName ?? '').toLowerCase().includes(needle) ||
+        (booking.customerId ?? '').toLowerCase().includes(needle) ||
+        (booking.driverId ?? '').toLowerCase().includes(needle) ||
+        booking.pickupLocation.toLowerCase().includes(needle)
+      );
+    });
+    if (bookingHit) {
+      setBookingQuery(bookingHit.id);
+      setContextBookingId(bookingHit.id);
+      navigateToTab('bookings');
+      setFeedback(`Opened job ${formatBookingRef(bookingHit)}.`);
+      return;
+    }
+
+    const customerHit = customers.find((customer) =>
+      [customer.name, customer.email, customer.phone ?? '', customer.id]
+        .join(' ')
+        .toLowerCase()
+        .includes(needle)
+    );
+    if (customerHit) {
+      setCustomerQuery(customerHit.name || customerHit.email);
+      navigateToTab('customers');
+      setFeedback(`Opened customer ${customerHit.name}.`);
+      return;
+    }
+
+    const driverHit = drivers.find((driver) =>
+      [driver.name, driver.email, driver.vehicle, driver.id].join(' ').toLowerCase().includes(needle)
+    );
+    if (driverHit) {
+      setDriverQuery(driverHit.name || driverHit.vehicle);
+      navigateToTab('drivers');
+      setFeedback(`Opened driver ${driverHit.name}.`);
+      return;
+    }
+
+    const incidentHit = incidents.find((incident) =>
+      [incident.id, incident.bookingId, incident.reason].join(' ').toLowerCase().includes(needle)
+    );
+    if (incidentHit) {
+      navigateToTab('incidents');
+      setFeedback(`Found incident for booking ${incidentHit.bookingId}.`);
+      return;
+    }
+
+    setFeedback('No matching booking, customer, driver, or incident.');
+  };
+
+  const updateBooking = async (bookingId: string, status: BookingStatus, reason?: string) => {
     if (!admin || !hasPermission('bookings:update')) return;
     await adminApi.updateBookingStatusAsAdmin({
       bookingId,
       status,
       adminId: admin.id,
-      reason: 'Ops dashboard manual update'
+      reason: reason?.trim() || 'Ops dashboard manual update'
     });
-    setFeedback(`Booking ${bookingId} moved to ${status}.`);
+    setFeedback(`Booking ${formatBookingRef({ id: bookingId, createdAt: '' })} moved to ${status}.`);
     await loadDashboard();
   };
 
-  const applyBulkStatus = async () => {
+  const applyBulkStatus = async (reason: string) => {
     if (!admin || !hasPermission('bookings:update')) return;
     const bookingIds = Object.entries(selectedBookings)
       .filter(([, selected]) => selected)
@@ -809,7 +928,7 @@ export const DashboardPage = ({ tabOverride }: DashboardPageProps) => {
       bookingIds,
       status: bulkStatus,
       adminId: admin.id,
-      reason: 'Bulk booking status update'
+      reason: reason.trim() || 'Bulk booking status update'
     });
     setSelectedBookings({});
     setFeedback(`Updated ${bookingIds.length} bookings to ${bulkStatus}.`);
@@ -825,56 +944,68 @@ export const DashboardPage = ({ tabOverride }: DashboardPageProps) => {
     }
   };
 
-  const updateCustomerStatus = async (customerId: string, status: AccountStatus) => {
+  const updateCustomerStatus = async (
+    customerId: string,
+    status: AccountStatus,
+    reason?: string
+  ) => {
     if (!admin || !hasPermission('customers:update')) return;
     await adminApi.updateCustomerStatus({
       customerId,
       status,
       actorId: admin.id,
-      reason: 'Managed from ops dashboard'
+      reason: reason?.trim() || 'Managed from ops dashboard'
     });
-    setFeedback(`Customer ${customerId} changed to ${status}.`);
+    setFeedback(`Customer status changed to ${status}.`);
     await loadDashboard();
   };
 
-  const updateDriverStatus = async (driverId: string, status: AccountStatus) => {
+  const updateDriverStatus = async (
+    driverId: string,
+    status: AccountStatus,
+    reason?: string
+  ) => {
     if (!admin || !hasPermission('drivers:update')) return;
     await adminApi.updateDriverStatus({
       driverId,
       status,
       actorId: admin.id,
-      reason: 'Managed from ops dashboard'
+      reason: reason?.trim() || 'Managed from ops dashboard'
     });
-    setFeedback(`Driver ${driverId} changed to ${status}.`);
+    setFeedback(`Driver status changed to ${status}.`);
     await loadDashboard();
   };
 
   const updateDriverVerification = async (
     driverId: string,
-    verificationStatus: DriverVerificationStatus
+    verificationStatus: DriverVerificationStatus,
+    reason?: string
   ) => {
     if (!admin || !hasPermission('drivers:verify')) return;
     await adminApi.updateDriverVerification({
       driverId,
       verificationStatus,
       actorId: admin.id,
-      reason: 'Document review from ops dashboard'
+      reason: reason?.trim() || 'Document review from ops dashboard'
     });
-    setFeedback(`Driver ${driverId} verification set to ${verificationStatus}.`);
+    setFeedback(`Driver verification set to ${verificationStatus}.`);
     await loadDashboard();
   };
 
-  const assignDriver = async (bookingId: string) => {
+  const assignDriver = async (bookingId: string, driverIdOverride?: string) => {
     if (!admin || !hasPermission('bookings:assign')) return;
-    const selectedDriver = selectedDriverByBooking[bookingId];
+    const selectedDriver = driverIdOverride || selectedDriverByBooking[bookingId];
     if (!selectedDriver) return;
+    if (driverIdOverride) {
+      setSelectedDriverByBooking((prev) => ({ ...prev, [bookingId]: driverIdOverride }));
+    }
     await adminApi.assignBookingDriver({
       bookingId,
       driverId: selectedDriver,
       actorId: admin.id,
       reason: 'Live assignment from ops dashboard'
     });
-    setFeedback(`Assigned booking ${bookingId} to ${selectedDriver}.`);
+    setFeedback(`Assigned ${formatBookingRef({ id: bookingId, createdAt: '' })} successfully.`);
     await loadDashboard();
   };
 
@@ -1364,418 +1495,657 @@ export const DashboardPage = ({ tabOverride }: DashboardPageProps) => {
       )
     );
 
+  const attentionItems = useMemo<AttentionItem[]>(() => {
+    const items: AttentionItem[] = [];
+    const oldUnassigned = dispatchLanes.UNASSIGNED.filter((booking) => {
+      const age = Math.floor((Date.now() - parseDateMs(booking.updatedAt)) / 60000);
+      return age >= unassignedSlaMinutes;
+    });
+    if (oldUnassigned.length > 0) {
+      items.push({
+        id: 'unassigned-stale',
+        severity: 'critical',
+        title: `${oldUnassigned.length} unassigned job(s) older than ${unassignedSlaMinutes} min`,
+        detail: oldUnassigned
+          .slice(0, 3)
+          .map((b) => formatBookingRef(b))
+          .join(', '),
+        actionLabel: 'Open dispatch',
+        onAction: () => {
+          setDispatchLaneFilter('UNASSIGNED');
+          navigateToTab('dispatch');
+        }
+      });
+    }
+    if (exhaustedDispatchCount > 0) {
+      items.push({
+        id: 'exhausted',
+        severity: 'critical',
+        title: `${exhaustedDispatchCount} dispatch-exhausted job(s)`,
+        detail: latestExhaustedLabel ? `Last update ${latestExhaustedLabel}` : 'Manual assignment required',
+        actionLabel: 'Open exhausted lane',
+        onAction: openDispatchExhaustedLane
+      });
+    }
+    const unownedHigh = incidents.filter(
+      (incident) =>
+        incident.status !== 'RESOLVED' && incident.severity === 'high' && !incident.ownerAdminId
+    );
+    if (unownedHigh.length > 0) {
+      items.push({
+        id: 'unowned-incidents',
+        severity: 'critical',
+        title: `${unownedHigh.length} high-priority incident(s) unowned`,
+        detail: 'Assign an operator before SLA ages further',
+        actionLabel: 'Open incidents',
+        onAction: () => navigateToTab('incidents')
+      });
+    }
+    if (criticalSlaCount > 0) {
+      items.push({
+        id: 'sla-high',
+        severity: 'warning',
+        title: `${criticalSlaCount} high SLA breach(es)`,
+        detail: slaAlerts
+          .filter((a) => a.severity === 'high')
+          .slice(0, 3)
+          .map((a) => `${formatBookingRef(a.booking)} · ${a.reason}`)
+          .join('; '),
+        actionLabel: 'Review SLA',
+        onAction: () => navigateToTab('dispatch')
+      });
+    }
+    const startingSoon = sortedBookings.filter((booking) => {
+      if (['COMPLETED', 'CANCELLED'].includes(booking.status)) return false;
+      const mins = Math.floor((parseDateMs(booking.scheduledAt) - Date.now()) / 60000);
+      return mins >= 0 && mins <= 30;
+    });
+    if (startingSoon.length > 0) {
+      items.push({
+        id: 'starting-soon',
+        severity: 'warning',
+        title: `${startingSoon.length} job(s) scheduled in the next 30 minutes`,
+        detail: startingSoon
+          .slice(0, 3)
+          .map((b) => formatBookingRef(b))
+          .join(', '),
+        actionLabel: 'Open jobs',
+        onAction: () => navigateToTab('bookings')
+      });
+    }
+    if ((summary?.pendingDriverVerifications ?? 0) > 0) {
+      items.push({
+        id: 'driver-verify',
+        severity: 'warning',
+        title: `${summary!.pendingDriverVerifications} driver verification(s) pending`,
+        detail: 'Compliance queue needs review',
+        actionLabel: 'Open drivers',
+        onAction: () => navigateToTab('drivers')
+      });
+    }
+    return items;
+  }, [
+    criticalSlaCount,
+    dispatchLanes.UNASSIGNED,
+    exhaustedDispatchCount,
+    incidents,
+    latestExhaustedLabel,
+    navigateToTab,
+    openDispatchExhaustedLane,
+    slaAlerts,
+    sortedBookings,
+    summary,
+    unassignedSlaMinutes
+  ]);
+
+  const commandKpis = useMemo(() => {
+    if (!summary) return [];
+    const startOfDay = new Date();
+    startOfDay.setHours(0, 0, 0, 0);
+    const jobsToday = sortedBookings.filter(
+      (b) => parseDateMs(b.createdAt) >= startOfDay.getTime() || parseDateMs(b.scheduledAt) >= startOfDay.getTime()
+    ).length;
+    const availableDrivers = drivers.filter(
+      (d) =>
+        d.status === 'ACTIVE' &&
+        d.verificationStatus === 'VERIFIED' &&
+        !d.activeBookingId
+    ).length;
+    const openIncidents = incidents.filter((i) => i.status !== 'RESOLVED').length;
+    return [
+      {
+        key: 'jobsToday',
+        label: 'Jobs today',
+        value: jobsToday,
+        onClick: () => navigateToTab('bookings')
+      },
+      {
+        key: 'active',
+        label: 'Active jobs',
+        value: summary.activeBookings,
+        onClick: () => {
+          setBookingStatusFilter('IN_PROGRESS');
+          navigateToTab('bookings');
+        }
+      },
+      {
+        key: 'unassigned',
+        label: 'Unassigned',
+        value: summary.unassignedBookings,
+        tone: summary.unassignedBookings > 0 ? ('warn' as const) : ('default' as const),
+        onClick: () => {
+          setDispatchLaneFilter('UNASSIGNED');
+          navigateToTab('dispatch');
+        }
+      },
+      {
+        key: 'sla',
+        label: 'SLA breaches',
+        value: slaAlerts.length,
+        tone: criticalSlaCount > 0 ? ('danger' as const) : slaAlerts.length > 0 ? ('warn' as const) : ('default' as const),
+        onClick: () => navigateToTab('dispatch')
+      },
+      {
+        key: 'drivers',
+        label: 'Drivers available',
+        value: availableDrivers,
+        onClick: () => navigateToTab('drivers')
+      },
+      {
+        key: 'completed',
+        label: 'Completed',
+        value: summary.completedBookings,
+        onClick: () => {
+          setBookingStatusFilter('COMPLETED');
+          navigateToTab('bookings');
+        }
+      },
+      {
+        key: 'incidents',
+        label: 'Open incidents',
+        value: openIncidents,
+        tone: openIncidents > 0 ? ('warn' as const) : ('default' as const),
+        onClick: () => navigateToTab('incidents')
+      },
+      {
+        key: 'exhausted',
+        label: 'Dispatch exhausted',
+        value: exhaustedDispatchCount,
+        tone: exhaustedDispatchCount > 0 ? ('danger' as const) : ('default' as const),
+        onClick: openDispatchExhaustedLane
+      },
+      {
+        key: 'verify',
+        label: 'Verifications',
+        value: summary.pendingDriverVerifications,
+        tone: summary.pendingDriverVerifications > 0 ? ('warn' as const) : ('default' as const),
+        onClick: () => navigateToTab('drivers')
+      }
+    ];
+  }, [
+    criticalSlaCount,
+    drivers,
+    exhaustedDispatchCount,
+    incidents,
+    navigateToTab,
+    openDispatchExhaustedLane,
+    slaAlerts.length,
+    sortedBookings,
+    summary
+  ]);
+
+  const breadcrumbs = useMemo(() => {
+    const crumbs = ['Dripless Ops', activeTabMeta.label];
+    if (contextBookingId) {
+      const booking = bookings.find((b) => b.id === contextBookingId);
+      crumbs.push(booking ? formatBookingRef(booking) : contextBookingId);
+    }
+    return crumbs;
+  }, [activeTabMeta.label, bookings, contextBookingId]);
+
   if (isLoading || !summary) {
     return (
       <div className="container">
-        <div className="card">Loading dashboard...</div>
+        <div className="card">Loading operations dashboard…</div>
       </div>
     );
   }
 
+  const myIncidents = sortedIncidents.filter(
+    (incident) =>
+      incident.status !== 'RESOLVED' &&
+      (incident.ownerAdminId === admin?.id || !incident.ownerAdminId)
+  );
+
   return (
-    <div className="container">
-      <div className="ops-shell">
-        <OpsSidebar
-          activeTab={activeTab}
-          visibleTabs={visibleTabsWithBadges}
-          preset={preset}
-          onPresetChange={applyPreset}
-          onLogout={logout}
-          adminName={admin?.name}
+    <OpsShell
+      activeTab={activeTab}
+      permissions={admin?.permissions ?? []}
+      badges={navBadges}
+      adminEmail={admin?.email ?? ''}
+      adminName={admin?.name}
+      preset={preset}
+      liveMode={isLiveMode}
+      onLiveModeChange={setIsLiveMode}
+      onLogout={logout}
+      onPresetSelect={applyPreset}
+      globalSearch={globalSearch}
+      onGlobalSearchChange={setGlobalSearch}
+      onGlobalSearchSubmit={runGlobalSearch}
+      onRefresh={() => void loadDashboard()}
+      breadcrumbs={breadcrumbs}
+      feedback={feedback}
+      error={error}
+      lastSyncedAt={lastSyncedAt}
+      isRefreshing={isRefreshing}>
+      {!canAccessActiveTab ? (
+        <div className="card">
+          <h2 style={{ marginTop: 0 }}>Access restricted</h2>
+          <p className="muted">
+            Your permissions do not include {activeTabMeta.label}. Contact a supervisor if you need
+            access.
+          </p>
+          <button type="button" onClick={() => navigateToTab('overview')}>
+            Go to Command Centre
+          </button>
+        </div>
+      ) : null}
+
+      {canAccessActiveTab && activeTab === 'overview' ? (
+        <OverviewSection
+          analytics={analytics}
+          kpis={commandKpis}
+          attention={attentionItems}
+          activity={activity}
+          notifications={notifications}
+          bookings={sortedBookings}
+          driverLocations={driverLocations}
+          openIncidentCount={openIncidentCount}
+          liveMode={isLiveMode}
+          canBroadcast={hasPermission('notifications:broadcast')}
+          analyticsFrom={analyticsFrom}
+          analyticsTo={analyticsTo}
+          onAnalyticsFromChange={setAnalyticsFrom}
+          onAnalyticsToChange={setAnalyticsTo}
+          onRefreshAnalytics={() => void loadAnalytics()}
+          onNavigate={navigateToTab}
+          broadcastTitle={broadcastTitle}
+          broadcastMessage={broadcastMessage}
+          broadcastType={broadcastType}
+          targetCustomer={targetCustomer}
+          targetDriver={targetDriver}
+          targetOps={targetOps}
+          onBroadcastTitleChange={setBroadcastTitle}
+          onBroadcastMessageChange={setBroadcastMessage}
+          onBroadcastTypeChange={setBroadcastType}
+          onTargetCustomerChange={setTargetCustomer}
+          onTargetDriverChange={setTargetDriver}
+          onTargetOpsChange={setTargetOps}
+          onBroadcast={() => {
+            void broadcast();
+          }}
         />
+      ) : null}
 
-        <main className="ops-main stack">
-          <div className="card">
-            <h1 style={{ margin: 0 }}>{activeTabMeta.label}</h1>
-            <p className="muted" style={{ marginTop: 6, marginBottom: 0 }}>
-              {activeTabMeta.subtitle}
-            </p>
-            <p className="muted" style={{ marginTop: 8, marginBottom: 0 }}>
-              Permissions: {admin?.permissions.join(', ')}
-            </p>
-          </div>
+      {canAccessActiveTab && activeTab === 'specials' ? (
+        <SpecialsSection
+          specials={specials}
+          canManageSpecials={canManageSpecials}
+          specialTitle={specialTitle}
+          specialDescription={specialDescription}
+          specialPromoCode={specialPromoCode}
+          specialAudience={specialAudience}
+          specialScope={specialScope}
+          specialDiscountType={specialDiscountType}
+          specialDiscountValue={specialDiscountValue}
+          specialStartsAt={specialStartsAt}
+          specialEndsAt={specialEndsAt}
+          specialTerms={specialTerms}
+          onSpecialTitleChange={setSpecialTitle}
+          onSpecialDescriptionChange={setSpecialDescription}
+          onSpecialPromoCodeChange={(value) => setSpecialPromoCode(value.toUpperCase())}
+          onSpecialAudienceChange={setSpecialAudience}
+          onSpecialScopeChange={setSpecialScope}
+          onSpecialDiscountTypeChange={setSpecialDiscountType}
+          onSpecialDiscountValueChange={setSpecialDiscountValue}
+          onSpecialStartsAtChange={setSpecialStartsAt}
+          onSpecialEndsAtChange={setSpecialEndsAt}
+          onSpecialTermsChange={setSpecialTerms}
+          editingSpecialId={editingSpecialId}
+          onCreateSpecial={() => {
+            void createSpecial();
+          }}
+          onExportSpecials={exportSpecials}
+          onExportSpecialRedemptions={exportSpecialRedemptions}
+          onCancelEdit={resetSpecialForm}
+          onApproveSpecial={(specialId) => {
+            void approveSpecial(specialId);
+          }}
+          onSetActivation={(specialId, isActive) => {
+            void setSpecialActivation(specialId, isActive);
+          }}
+          onLoadSpecialForEdit={loadSpecialForEdit}
+          onDeleteSpecial={(specialId) => {
+            void deleteSpecial(specialId);
+          }}
+          specialsRedemptionsInRange={specialRedemptionsInRange.length}
+          topSpecialsByRange={topSpecialsByRange}
+          audienceBreakdownInRange={audienceBreakdownInRange}
+          serviceScopeBreakdownInRange={serviceScopeBreakdownInRange}
+        />
+      ) : null}
 
-          {error ? <div className="card alert-danger">{error}</div> : null}
-          {feedback ? <div className="card alert-success">{feedback}</div> : null}
+      {canAccessActiveTab && activeTab === 'customers' ? (
+        <CustomersSection
+          customerQuery={customerQuery}
+          customerStatusFilter={customerStatusFilter}
+          accountStatusOptions={accountStatusOptions}
+          currentCustomers={currentCustomers}
+          bookings={sortedBookings}
+          customerPage={customerPage}
+          customerTotalPages={pageCount(filteredCustomers)}
+          canUpdateCustomers={hasPermission('customers:update')}
+          onCustomerQueryChange={setCustomerQuery}
+          onCustomerStatusFilterChange={setCustomerStatusFilter}
+          onExportCustomers={exportCustomers}
+          onUpdateCustomerStatus={(customerId, status, reason) => {
+            void updateCustomerStatus(customerId, status, reason);
+          }}
+          onPreviousCustomerPage={() => setCustomerPage((prev) => Math.max(1, prev - 1))}
+          onNextCustomerPage={() =>
+            setCustomerPage((prev) => Math.min(pageCount(filteredCustomers), prev + 1))
+          }
+          canGoPreviousCustomerPage={customerPage > 1}
+          canGoNextCustomerPage={customerPage < pageCount(filteredCustomers)}
+        />
+      ) : null}
 
-          <div className="row">
-            <label className="row">
-              <input
-                type="checkbox"
-                checked={isLiveMode}
-                onChange={(event) => setIsLiveMode(event.target.checked)}
-                style={{ width: 'auto' }}
-              />
-              Live mode (15s)
-            </label>
-            <button className="secondary" onClick={() => void loadDashboard()}>
-              Refresh data
-            </button>
-          </div>
+      {canAccessActiveTab && activeTab === 'drivers' ? (
+        <DriversSection
+          driverQuery={driverQuery}
+          driverStatusFilter={driverStatusFilter}
+          driverVerificationFilter={driverVerificationFilter}
+          accountStatusOptions={accountStatusOptions}
+          verificationStatusOptions={verificationStatusOptions}
+          currentDrivers={currentDrivers}
+          allDrivers={drivers}
+          bookings={sortedBookings}
+          driverLocations={driverLocations}
+          driverPage={driverPage}
+          driverTotalPages={pageCount(filteredDrivers)}
+          canUpdateDrivers={hasPermission('drivers:update')}
+          canVerifyDrivers={hasPermission('drivers:verify')}
+          onDriverQueryChange={setDriverQuery}
+          onDriverStatusFilterChange={setDriverStatusFilter}
+          onDriverVerificationFilterChange={setDriverVerificationFilter}
+          onExportDrivers={exportDrivers}
+          onUpdateDriverStatus={(driverId, status, reason) => {
+            void updateDriverStatus(driverId, status, reason);
+          }}
+          onUpdateDriverVerification={(driverId, status, reason) => {
+            void updateDriverVerification(driverId, status, reason);
+          }}
+          onPreviousDriverPage={() => setDriverPage((prev) => Math.max(1, prev - 1))}
+          onNextDriverPage={() =>
+            setDriverPage((prev) => Math.min(pageCount(filteredDrivers), prev + 1))
+          }
+          canGoPreviousDriverPage={driverPage > 1}
+          canGoNextDriverPage={driverPage < pageCount(filteredDrivers)}
+        />
+      ) : null}
 
-          {!canAccessActiveTab ? (
-            <div className="card">
-              <h2 style={{ marginTop: 0 }}>Access restricted</h2>
-              <p className="muted">
-                Your current permissions do not include the {activeTabMeta.label} page.
-                Switch to Super Admin preset or ask for elevated access.
-              </p>
-              <button type="button" onClick={() => navigateToTab('overview')}>
-                Go to Overview
-              </button>
-            </div>
-          ) : null}
+      {canAccessActiveTab && activeTab === 'bookings' ? (
+        <BookingsSection
+          bookingQuery={bookingQuery}
+          bookingStatusFilter={bookingStatusFilter}
+          bulkStatus={bulkStatus}
+          statusOptions={statusOptions}
+          currentBookings={currentBookings}
+          allBookings={sortedBookings}
+          selectedBookings={selectedBookings}
+          selectedDriverByBooking={selectedDriverByBooking}
+          recommendationsByBooking={recommendationsByBooking}
+          drivers={drivers}
+          bookingPage={bookingPage}
+          bookingTotalPages={pageCount(filteredBookings)}
+          canUpdateBookings={hasPermission('bookings:update')}
+          canAssignBookings={hasPermission('bookings:assign')}
+          onBookingQueryChange={setBookingQuery}
+          onBookingStatusFilterChange={setBookingStatusFilter}
+          onBulkStatusChange={setBulkStatus}
+          onExportBookings={exportBookings}
+          onApplyBulkStatus={(reason) => {
+            void applyBulkStatus(reason);
+          }}
+          onToggleBookingSelected={(bookingId, checked) => {
+            setSelectedBookings((prev) => ({ ...prev, [bookingId]: checked }));
+          }}
+          onUpdateBookingStatus={(bookingId, status, reason) => {
+            void updateBooking(bookingId, status, reason);
+          }}
+          onRecommendDrivers={(bookingId) => {
+            void recommendDrivers(bookingId);
+          }}
+          onBookingDriverSelectionChange={(bookingId, driverId) => {
+            setSelectedDriverByBooking((prev) => ({ ...prev, [bookingId]: driverId }));
+          }}
+          onAssignDriver={(bookingId, driverId) => {
+            void assignDriver(bookingId, driverId);
+          }}
+          onPreviousBookingPage={() => setBookingPage((prev) => Math.max(1, prev - 1))}
+          onNextBookingPage={() =>
+            setBookingPage((prev) => Math.min(pageCount(filteredBookings), prev + 1))
+          }
+          canGoPreviousBookingPage={bookingPage > 1}
+          canGoNextBookingPage={bookingPage < pageCount(filteredBookings)}
+        />
+      ) : null}
 
-          {canAccessActiveTab && activeTab === 'overview' ? (
-            <>
-              <div className="grid">
-                <div className="card"><div className="muted">Customers</div><div style={{ fontSize: 28, fontWeight: 700 }}>{summary.totalCustomers}</div></div>
-                <div className="card"><div className="muted">Drivers</div><div style={{ fontSize: 28, fontWeight: 700 }}>{summary.totalDrivers}</div></div>
-                <div className="card"><div className="muted">Active bookings</div><div style={{ fontSize: 28, fontWeight: 700 }}>{summary.activeBookings}</div></div>
-                <div className="card"><div className="muted">Pending bookings</div><div style={{ fontSize: 28, fontWeight: 700 }}>{summary.pendingBookings}</div></div>
-                <div className="card"><div className="muted">Completed bookings</div><div style={{ fontSize: 28, fontWeight: 700 }}>{summary.completedBookings}</div></div>
-                <div className="card"><div className="muted">Unassigned bookings</div><div style={{ fontSize: 28, fontWeight: 700 }}>{summary.unassignedBookings}</div></div>
-                <button
-                  className={exhaustedDispatchCardClassName}
-                  onClick={openDispatchExhaustedLane}
-                  style={{ textAlign: 'left' }}
-                  type="button">
-                  <div className="muted">Dispatch exhausted</div>
-                  <div style={{ fontSize: 28, fontWeight: 700 }}>{exhaustedDispatchCount}</div>
-                  <div className="muted" style={{ marginTop: 6 }}>
-                    Open dispatch lane
-                  </div>
-                  <div className="muted" style={{ marginTop: 4 }}>
-                    {latestExhaustedLabel ? `Last exhausted update: ${latestExhaustedLabel}` : 'No exhausted dispatch events'}
-                  </div>
-                </button>
-                <div className="card"><div className="muted">Suspended customers</div><div style={{ fontSize: 28, fontWeight: 700 }}>{summary.suspendedCustomers}</div></div>
-                <div className="card"><div className="muted">Suspended drivers</div><div style={{ fontSize: 28, fontWeight: 700 }}>{summary.suspendedDrivers}</div></div>
-                <div className="card"><div className="muted">Driver verifications pending</div><div style={{ fontSize: 28, fontWeight: 700 }}>{summary.pendingDriverVerifications}</div></div>
-              </div>
+      {canAccessActiveTab && activeTab === 'dispatch' ? (
+        <DispatchSection
+          bookings={sortedBookings}
+          driverLocations={driverLocations}
+          dispatchLaneFilter={dispatchLaneFilter}
+          latestExhaustedLabel={latestExhaustedLabel}
+          lastBulkAcknowledgedAt={lastBulkAcknowledgedAt}
+          exhaustedActionableIncidentCount={exhaustedActionableIncidentCount}
+          isAcknowledgingExhaustedIncidents={isAcknowledgingExhaustedIncidents}
+          statusOptions={statusOptions}
+          unassignedSlaMinutes={unassignedSlaMinutes}
+          staleStatusSlaMinutes={staleStatusSlaMinutes}
+          enableDesktopAlerts={enableDesktopAlerts}
+          enableSoundAlerts={enableSoundAlerts}
+          lastEscalatedAt={lastEscalatedAt}
+          slaAlerts={slaAlerts}
+          dispatchLanes={dispatchLanes}
+          incidentsByBooking={incidentsByBooking}
+          selectedDriverByBooking={selectedDriverByBooking}
+          recommendationsByBooking={recommendationsByBooking}
+          drivers={drivers}
+          slaHeatmap={slaHeatmap}
+          incidentAgingBuckets={incidentAgingBuckets}
+          agentWorkload={agentWorkload}
+          incidentQueueView={incidentQueueView}
+          showResolvedIncidents={showResolvedIncidents}
+          autoEscalateEnabled={autoEscalateEnabled}
+          autoEscalateThresholdMinutes={autoEscalateThresholdMinutes}
+          incidentSnoozeMinutes={incidentSnoozeMinutes}
+          visibleIncidents={visibleIncidents}
+          selectedTimelineBookingId={selectedTimelineBookingId}
+          bookingTimeline={bookingTimeline}
+          canManageIncidents={canManageIncidents}
+          canAssignBookings={hasPermission('bookings:assign')}
+          canBroadcast={hasPermission('notifications:broadcast')}
+          onDispatchLaneFilterChange={setDispatchLaneFilter}
+          onUnassignedSlaMinutesChange={setUnassignedSlaMinutes}
+          onStaleStatusSlaMinutesChange={setStaleStatusSlaMinutes}
+          onResetDefaults={() => {
+            setUnassignedSlaMinutes(DEFAULT_UNASSIGNED_SLA_MINUTES);
+            setStaleStatusSlaMinutes(DEFAULT_STALE_STATUS_SLA_MINUTES);
+          }}
+          onEnableDesktopAlertsChange={setEnableDesktopAlerts}
+          onRequestDesktopAlertPermission={() => {
+            void requestDesktopAlertPermission();
+          }}
+          onEnableSoundAlertsChange={setEnableSoundAlerts}
+          onEscalateCriticalAlerts={() => {
+            void escalateCriticalAlerts();
+          }}
+          onAcknowledgeExhaustedIncidents={() => {
+            void acknowledgeExhaustedIncidentsAction();
+          }}
+          onClearBulkAcknowledgementMarker={clearBulkAcknowledgementMarker}
+          onCreateIncident={(bookingId, reason, severity) => {
+            void createIncident(bookingId, reason, severity);
+          }}
+          onRecommendDrivers={(bookingId) => {
+            void recommendDrivers(bookingId);
+          }}
+          onSelectedDriverByBookingChange={(bookingId, driverId) => {
+            setSelectedDriverByBooking((prev) => ({ ...prev, [bookingId]: driverId }));
+          }}
+          onAssignDriver={(bookingId, driverId) => {
+            void assignDriver(bookingId, driverId);
+          }}
+          onOpenTimeline={(bookingId) => {
+            setContextBookingId(bookingId);
+            void openTimeline(bookingId);
+          }}
+          onIncidentQueueViewChange={setIncidentQueueView}
+          onShowResolvedIncidentsChange={setShowResolvedIncidents}
+          onAutoEscalateEnabledChange={setAutoEscalateEnabled}
+          onAutoEscalateThresholdMinutesChange={setAutoEscalateThresholdMinutes}
+          onIncidentSnoozeMinutesChange={setIncidentSnoozeMinutes}
+          onAssignIncidentToMe={(incidentId) => {
+            void assignIncidentToMe(incidentId);
+          }}
+          onAcknowledgeIncident={(incidentId) => {
+            void acknowledgeIncidentAction(incidentId);
+          }}
+          onSnoozeIncident={(incidentId) => {
+            void snoozeIncidentAction(incidentId);
+          }}
+          onResolveIncident={(incidentId) => {
+            void resolveIncidentAction(incidentId);
+          }}
+          onEscalateIncident={(incidentId) => {
+            void escalateIncidentAction(incidentId);
+          }}
+        />
+      ) : null}
 
-              <div className="card stack">
-                <h2 style={{ margin: 0 }}>Date-range analytics</h2>
-                <div className="row">
-                  <label className="row">
-                    <span className="muted">From</span>
-                    <input type="date" value={analyticsFrom} onChange={(event) => setAnalyticsFrom(event.target.value)} />
-                  </label>
-                  <label className="row">
-                    <span className="muted">To</span>
-                    <input type="date" value={analyticsTo} onChange={(event) => setAnalyticsTo(event.target.value)} />
-                  </label>
-                  <button onClick={() => void loadAnalytics()} className="secondary">
-                    Refresh analytics
-                  </button>
-                </div>
-                {analytics ? (
-                  <div className="grid">
-                    <div className="card"><div className="muted">Bookings in range</div><div style={{ fontSize: 22, fontWeight: 700 }}>{analytics.totalBookings}</div></div>
-                    <div className="card"><div className="muted">Completion rate</div><div style={{ fontSize: 22, fontWeight: 700 }}>{(analytics.completionRate * 100).toFixed(1)}%</div></div>
-                    <div className="card"><div className="muted">Revenue</div><div style={{ fontSize: 22, fontWeight: 700 }}>${analytics.revenue.toFixed(2)}</div></div>
-                    <div className="card"><div className="muted">Average value</div><div style={{ fontSize: 22, fontWeight: 700 }}>${analytics.avgBookingValue.toFixed(2)}</div></div>
-                    <div className="card"><div className="muted">Top service type</div><div style={{ fontSize: 22, fontWeight: 700 }}>{analytics.topServiceType}</div></div>
-                  </div>
-                ) : (
-                  <p className="muted">No analytics available for selected range.</p>
-                )}
-              </div>
+      {canAccessActiveTab && activeTab === 'incidents' ? (
+        <IncidentsSection
+          incidents={visibleIncidents}
+          bookings={sortedBookings}
+          activity={activity}
+          canManageIncidents={canManageIncidents}
+          incidentQueueView={incidentQueueView}
+          showResolvedIncidents={showResolvedIncidents}
+          incidentSnoozeMinutes={incidentSnoozeMinutes}
+          onIncidentQueueViewChange={setIncidentQueueView}
+          onShowResolvedIncidentsChange={setShowResolvedIncidents}
+          onIncidentSnoozeMinutesChange={setIncidentSnoozeMinutes}
+          onAssignIncidentToMe={(incidentId) => {
+            void assignIncidentToMe(incidentId);
+          }}
+          onAcknowledgeIncident={(incidentId) => {
+            void acknowledgeIncidentAction(incidentId);
+          }}
+          onSnoozeIncident={(incidentId) => {
+            void snoozeIncidentAction(incidentId);
+          }}
+          onResolveIncident={(incidentId) => {
+            void resolveIncidentAction(incidentId);
+          }}
+          onEscalateIncident={(incidentId) => {
+            void escalateIncidentAction(incidentId);
+          }}
+          onOpenBooking={(bookingId) => {
+            setBookingQuery(bookingId);
+            setContextBookingId(bookingId);
+            navigateToTab('bookings');
+          }}
+        />
+      ) : null}
 
-              <OverviewSection
-                broadcastTitle={broadcastTitle}
-                broadcastMessage={broadcastMessage}
-                broadcastType={broadcastType}
-                targetCustomer={targetCustomer}
-                targetDriver={targetDriver}
-                targetOps={targetOps}
-                canBroadcast={hasPermission('notifications:broadcast')}
-                onBroadcastTitleChange={setBroadcastTitle}
-                onBroadcastMessageChange={setBroadcastMessage}
-                onBroadcastTypeChange={setBroadcastType}
-                onTargetCustomerChange={setTargetCustomer}
-                onTargetDriverChange={setTargetDriver}
-                onTargetOpsChange={setTargetOps}
-                onBroadcast={() => {
-                  void broadcast();
-                }}
-                activityTypeOptions={activityTypeOptions}
-                activityTypeFilter={activityTypeFilter}
-                activityQuery={activityQuery}
-                currentActivity={currentActivity}
-                activityPage={activityPage}
-                activityTotalPages={pageCount(filteredActivity)}
-                onActivityTypeFilterChange={setActivityTypeFilter}
-                onActivityQueryChange={setActivityQuery}
-                onPreviousActivityPage={() => setActivityPage((prev) => Math.max(1, prev - 1))}
-                onNextActivityPage={() =>
-                  setActivityPage((prev) => Math.min(pageCount(filteredActivity), prev + 1))
-                }
-                canGoPreviousActivityPage={activityPage > 1}
-                canGoNextActivityPage={activityPage < pageCount(filteredActivity)}
-                slaAlerts={slaAlerts}
-              />
-            </>
-          ) : null}
+      {canAccessActiveTab && activeTab === 'inbox' ? (
+        <InboxSection
+          notifications={currentNotifications}
+          notificationPage={notificationPage}
+          notificationTotalPages={pageCount(notifications)}
+          canGoPrevious={notificationPage > 1}
+          canGoNext={notificationPage < pageCount(notifications)}
+          onPrevious={() => setNotificationPage((prev) => Math.max(1, prev - 1))}
+          onNext={() =>
+            setNotificationPage((prev) => Math.min(pageCount(notifications), prev + 1))
+          }
+          myIncidents={myIncidents}
+          bookings={sortedBookings}
+          onOpenIncidentJob={(bookingId) => {
+            setBookingQuery(bookingId);
+            setContextBookingId(bookingId);
+            navigateToTab('bookings');
+          }}
+        />
+      ) : null}
 
-          {canAccessActiveTab && activeTab === 'specials' ? (
-            <SpecialsSection
-              specials={specials}
-              canManageSpecials={canManageSpecials}
-              specialTitle={specialTitle}
-              specialDescription={specialDescription}
-              specialPromoCode={specialPromoCode}
-              specialAudience={specialAudience}
-              specialScope={specialScope}
-              specialDiscountType={specialDiscountType}
-              specialDiscountValue={specialDiscountValue}
-              specialStartsAt={specialStartsAt}
-              specialEndsAt={specialEndsAt}
-              specialTerms={specialTerms}
-              onSpecialTitleChange={setSpecialTitle}
-              onSpecialDescriptionChange={setSpecialDescription}
-              onSpecialPromoCodeChange={(value) => setSpecialPromoCode(value.toUpperCase())}
-              onSpecialAudienceChange={setSpecialAudience}
-              onSpecialScopeChange={setSpecialScope}
-              onSpecialDiscountTypeChange={setSpecialDiscountType}
-              onSpecialDiscountValueChange={setSpecialDiscountValue}
-              onSpecialStartsAtChange={setSpecialStartsAt}
-              onSpecialEndsAtChange={setSpecialEndsAt}
-              onSpecialTermsChange={setSpecialTerms}
-              editingSpecialId={editingSpecialId}
-              onCreateSpecial={() => {
-                void createSpecial();
-              }}
-              onExportSpecials={exportSpecials}
-              onExportSpecialRedemptions={exportSpecialRedemptions}
-              onCancelEdit={resetSpecialForm}
-              onApproveSpecial={(specialId) => {
-                void approveSpecial(specialId);
-              }}
-              onSetActivation={(specialId, isActive) => {
-                void setSpecialActivation(specialId, isActive);
-              }}
-              onLoadSpecialForEdit={loadSpecialForEdit}
-              onDeleteSpecial={(specialId) => {
-                void deleteSpecial(specialId);
-              }}
-              specialsRedemptionsInRange={specialRedemptionsInRange.length}
-              topSpecialsByRange={topSpecialsByRange}
-              audienceBreakdownInRange={audienceBreakdownInRange}
-              serviceScopeBreakdownInRange={serviceScopeBreakdownInRange}
-            />
-          ) : null}
+      {canAccessActiveTab && activeTab === 'communications' ? (
+        <CommunicationsSection
+          canBroadcast={hasPermission('notifications:broadcast')}
+          broadcastTitle={broadcastTitle}
+          broadcastMessage={broadcastMessage}
+          broadcastType={broadcastType}
+          targetCustomer={targetCustomer}
+          targetDriver={targetDriver}
+          targetOps={targetOps}
+          onBroadcastTitleChange={setBroadcastTitle}
+          onBroadcastMessageChange={setBroadcastMessage}
+          onBroadcastTypeChange={setBroadcastType}
+          onTargetCustomerChange={setTargetCustomer}
+          onTargetDriverChange={setTargetDriver}
+          onTargetOpsChange={setTargetOps}
+          onBroadcast={() => {
+            void broadcast();
+          }}
+          sentHistory={notifications.slice(0, 20)}
+        />
+      ) : null}
 
-          {canAccessActiveTab && activeTab === 'customers' ? (
-            <CustomersSection
-              customerQuery={customerQuery}
-              customerStatusFilter={customerStatusFilter}
-              accountStatusOptions={accountStatusOptions}
-              currentCustomers={currentCustomers}
-              customerPage={customerPage}
-              customerTotalPages={pageCount(filteredCustomers)}
-              canUpdateCustomers={hasPermission('customers:update')}
-              onCustomerQueryChange={setCustomerQuery}
-              onCustomerStatusFilterChange={setCustomerStatusFilter}
-              onExportCustomers={exportCustomers}
-              onUpdateCustomerStatus={(customerId, status) => {
-                void updateCustomerStatus(customerId, status);
-              }}
-              onPreviousCustomerPage={() => setCustomerPage((prev) => Math.max(1, prev - 1))}
-              onNextCustomerPage={() =>
-                setCustomerPage((prev) => Math.min(pageCount(filteredCustomers), prev + 1))
-              }
-              canGoPreviousCustomerPage={customerPage > 1}
-              canGoNextCustomerPage={customerPage < pageCount(filteredCustomers)}
-            />
-          ) : null}
+      {canAccessActiveTab && activeTab === 'audit' ? (
+        <AuditSection
+          activity={currentActivity}
+          activityTypeFilter={activityTypeFilter}
+          activityQuery={activityQuery}
+          activityTypeOptions={activityTypeOptions}
+          activityPage={activityPage}
+          activityTotalPages={pageCount(filteredActivity)}
+          canGoPrevious={activityPage > 1}
+          canGoNext={activityPage < pageCount(filteredActivity)}
+          customers={customers}
+          drivers={drivers}
+          bookings={sortedBookings}
+          onTypeFilterChange={setActivityTypeFilter}
+          onQueryChange={setActivityQuery}
+          onPrevious={() => setActivityPage((prev) => Math.max(1, prev - 1))}
+          onNext={() =>
+            setActivityPage((prev) => Math.min(pageCount(filteredActivity), prev + 1))
+          }
+        />
+      ) : null}
 
-          {canAccessActiveTab && activeTab === 'drivers' ? (
-            <DriversSection
-              driverQuery={driverQuery}
-              driverStatusFilter={driverStatusFilter}
-              driverVerificationFilter={driverVerificationFilter}
-              accountStatusOptions={accountStatusOptions}
-              verificationStatusOptions={verificationStatusOptions}
-              currentDrivers={currentDrivers}
-              driverPage={driverPage}
-              driverTotalPages={pageCount(filteredDrivers)}
-              canUpdateDrivers={hasPermission('drivers:update')}
-              canVerifyDrivers={hasPermission('drivers:verify')}
-              onDriverQueryChange={setDriverQuery}
-              onDriverStatusFilterChange={setDriverStatusFilter}
-              onDriverVerificationFilterChange={setDriverVerificationFilter}
-              onExportDrivers={exportDrivers}
-              onUpdateDriverStatus={(driverId, status) => {
-                void updateDriverStatus(driverId, status);
-              }}
-              onUpdateDriverVerification={(driverId, status) => {
-                void updateDriverVerification(driverId, status);
-              }}
-              onPreviousDriverPage={() => setDriverPage((prev) => Math.max(1, prev - 1))}
-              onNextDriverPage={() =>
-                setDriverPage((prev) => Math.min(pageCount(filteredDrivers), prev + 1))
-              }
-              canGoPreviousDriverPage={driverPage > 1}
-              canGoNextDriverPage={driverPage < pageCount(filteredDrivers)}
-            />
-          ) : null}
-
-          {canAccessActiveTab && activeTab === 'bookings' ? (
-            <BookingsSection
-              bookingQuery={bookingQuery}
-              bookingStatusFilter={bookingStatusFilter}
-              bulkStatus={bulkStatus}
-              statusOptions={statusOptions}
-              currentBookings={currentBookings}
-              selectedBookings={selectedBookings}
-              selectedDriverByBooking={selectedDriverByBooking}
-              recommendationsByBooking={recommendationsByBooking}
-              drivers={drivers}
-              bookingPage={bookingPage}
-              bookingTotalPages={pageCount(filteredBookings)}
-              canUpdateBookings={hasPermission('bookings:update')}
-              canAssignBookings={hasPermission('bookings:assign')}
-              onBookingQueryChange={setBookingQuery}
-              onBookingStatusFilterChange={setBookingStatusFilter}
-              onBulkStatusChange={setBulkStatus}
-              onExportBookings={exportBookings}
-              onApplyBulkStatus={() => {
-                void applyBulkStatus();
-              }}
-              onToggleBookingSelected={(bookingId, checked) => {
-                setSelectedBookings((prev) => ({ ...prev, [bookingId]: checked }));
-              }}
-              onUpdateBookingStatus={(bookingId, status) => {
-                void updateBooking(bookingId, status);
-              }}
-              onRecommendDrivers={(bookingId) => {
-                void recommendDrivers(bookingId);
-              }}
-              onBookingDriverSelectionChange={(bookingId, driverId) => {
-                setSelectedDriverByBooking((prev) => ({ ...prev, [bookingId]: driverId }));
-              }}
-              onAssignDriver={(bookingId) => {
-                void assignDriver(bookingId);
-              }}
-              onPreviousBookingPage={() => setBookingPage((prev) => Math.max(1, prev - 1))}
-              onNextBookingPage={() =>
-                setBookingPage((prev) => Math.min(pageCount(filteredBookings), prev + 1))
-              }
-              canGoPreviousBookingPage={bookingPage > 1}
-              canGoNextBookingPage={bookingPage < pageCount(filteredBookings)}
-            />
-          ) : null}
-
-          {canAccessActiveTab && activeTab === 'dispatch' ? (
-            <DispatchSection
-              bookings={sortedBookings}
-              driverLocations={driverLocations}
-              dispatchLaneFilter={dispatchLaneFilter}
-              latestExhaustedLabel={latestExhaustedLabel}
-              lastBulkAcknowledgedAt={lastBulkAcknowledgedAt}
-              exhaustedActionableIncidentCount={exhaustedActionableIncidentCount}
-              isAcknowledgingExhaustedIncidents={isAcknowledgingExhaustedIncidents}
-              statusOptions={statusOptions}
-              unassignedSlaMinutes={unassignedSlaMinutes}
-              staleStatusSlaMinutes={staleStatusSlaMinutes}
-              enableDesktopAlerts={enableDesktopAlerts}
-              enableSoundAlerts={enableSoundAlerts}
-              lastEscalatedAt={lastEscalatedAt}
-              slaAlerts={slaAlerts}
-              dispatchLanes={dispatchLanes}
-              incidentsByBooking={incidentsByBooking}
-              selectedDriverByBooking={selectedDriverByBooking}
-              drivers={drivers}
-              slaHeatmap={slaHeatmap}
-              incidentAgingBuckets={incidentAgingBuckets}
-              agentWorkload={agentWorkload}
-              incidentQueueView={incidentQueueView}
-              showResolvedIncidents={showResolvedIncidents}
-              autoEscalateEnabled={autoEscalateEnabled}
-              autoEscalateThresholdMinutes={autoEscalateThresholdMinutes}
-              incidentSnoozeMinutes={incidentSnoozeMinutes}
-              visibleIncidents={visibleIncidents}
-              selectedTimelineBookingId={selectedTimelineBookingId}
-              bookingTimeline={bookingTimeline}
-              canManageIncidents={canManageIncidents}
-              canAssignBookings={hasPermission('bookings:assign')}
-              canBroadcast={hasPermission('notifications:broadcast')}
-              onDispatchLaneFilterChange={setDispatchLaneFilter}
-              onUnassignedSlaMinutesChange={setUnassignedSlaMinutes}
-              onStaleStatusSlaMinutesChange={setStaleStatusSlaMinutes}
-              onResetDefaults={() => {
-                setUnassignedSlaMinutes(DEFAULT_UNASSIGNED_SLA_MINUTES);
-                setStaleStatusSlaMinutes(DEFAULT_STALE_STATUS_SLA_MINUTES);
-              }}
-              onEnableDesktopAlertsChange={setEnableDesktopAlerts}
-              onRequestDesktopAlertPermission={() => {
-                void requestDesktopAlertPermission();
-              }}
-              onEnableSoundAlertsChange={setEnableSoundAlerts}
-              onEscalateCriticalAlerts={() => {
-                void escalateCriticalAlerts();
-              }}
-              onAcknowledgeExhaustedIncidents={() => {
-                void acknowledgeExhaustedIncidentsAction();
-              }}
-              onClearBulkAcknowledgementMarker={clearBulkAcknowledgementMarker}
-              onCreateIncident={(bookingId, reason, severity) => {
-                void createIncident(bookingId, reason, severity);
-              }}
-              onRecommendDrivers={(bookingId) => {
-                void recommendDrivers(bookingId);
-              }}
-              onSelectedDriverByBookingChange={(bookingId, driverId) => {
-                setSelectedDriverByBooking((prev) => ({ ...prev, [bookingId]: driverId }));
-              }}
-              onAssignDriver={(bookingId) => {
-                void assignDriver(bookingId);
-              }}
-              onOpenTimeline={(bookingId) => {
-                void openTimeline(bookingId);
-              }}
-              onIncidentQueueViewChange={setIncidentQueueView}
-              onShowResolvedIncidentsChange={setShowResolvedIncidents}
-              onAutoEscalateEnabledChange={setAutoEscalateEnabled}
-              onAutoEscalateThresholdMinutesChange={setAutoEscalateThresholdMinutes}
-              onIncidentSnoozeMinutesChange={setIncidentSnoozeMinutes}
-              onAssignIncidentToMe={(incidentId) => {
-                void assignIncidentToMe(incidentId);
-              }}
-              onAcknowledgeIncident={(incidentId) => {
-                void acknowledgeIncidentAction(incidentId);
-              }}
-              onSnoozeIncident={(incidentId) => {
-                void snoozeIncidentAction(incidentId);
-              }}
-              onResolveIncident={(incidentId) => {
-                void resolveIncidentAction(incidentId);
-              }}
-              onEscalateIncident={(incidentId) => {
-                void escalateIncidentAction(incidentId);
-              }}
-            />
-          ) : null}
-
-          {canAccessActiveTab && activeTab === 'notifications' ? (
-            <NotificationsSection
-              currentNotifications={currentNotifications}
-              notificationPage={notificationPage}
-              notificationTotalPages={pageCount(notifications)}
-              canGoPreviousNotificationPage={notificationPage > 1}
-              canGoNextNotificationPage={notificationPage < pageCount(notifications)}
-              onPreviousNotificationPage={() =>
-                setNotificationPage((prev) => Math.max(1, prev - 1))
-              }
-              onNextNotificationPage={() =>
-                setNotificationPage((prev) => Math.min(pageCount(notifications), prev + 1))
-              }
-              currentActivity={currentActivity}
-            />
-          ) : null}
-        </main>
-      </div>
-    </div>
+      {canAccessActiveTab && activeTab === 'reports' ? (
+        <ReportsSection
+          analytics={analytics}
+          analyticsFrom={analyticsFrom}
+          analyticsTo={analyticsTo}
+          onAnalyticsFromChange={setAnalyticsFrom}
+          onAnalyticsToChange={setAnalyticsTo}
+          onRefreshAnalytics={() => void loadAnalytics()}
+          bookings={sortedBookings}
+          onExportBookings={exportBookings}
+        />
+      ) : null}
+    </OpsShell>
   );
 };

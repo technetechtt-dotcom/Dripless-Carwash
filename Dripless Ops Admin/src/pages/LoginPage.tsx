@@ -29,11 +29,20 @@ export const LoginPage = () => {
   };
 
   return (
-    <div className="container" style={{ maxWidth: 520, marginTop: 80 }}>
-      <div className="card stack">
-        <h1 style={{ margin: 0 }}>Dripless Ops Admin</h1>
+    <div className="container login-shell">
+      <div className="card login-card stack">
+        <div className="ops-brand">
+          <div className="ops-brand-mark" aria-hidden>
+            D
+          </div>
+          <div className="ops-brand-text">
+            <strong>Dripless Ops</strong>
+            <span>Command centre sign-in</span>
+          </div>
+        </div>
+        <h1 style={{ margin: 0, fontSize: 26 }}>Sign in</h1>
         <p className="muted" style={{ margin: 0 }}>
-          Manage customers, drivers, and live booking operations.
+          Dispatch, incidents, drivers and customer operations.
         </p>
 
         <form className="stack" onSubmit={handleSubmit}>
@@ -44,6 +53,7 @@ export const LoginPage = () => {
               value={apiBaseUrl}
               onChange={(event) => setApiBaseUrl(event.target.value)}
               placeholder="https://api.driplesswash.com"
+              autoComplete="url"
             />
           </label>
           <label className="stack">
@@ -53,6 +63,7 @@ export const LoginPage = () => {
               value={email}
               onChange={(event) => setEmail(event.target.value)}
               required
+              autoComplete="username"
             />
           </label>
           <label className="stack">
@@ -62,13 +73,21 @@ export const LoginPage = () => {
               value={password}
               onChange={(event) => setPassword(event.target.value)}
               required
+              autoComplete="current-password"
             />
           </label>
-          {error ? <p style={{ color: '#b91c1c', margin: 0 }}>{error}</p> : null}
+          {error ? (
+            <p className="card alert-danger" role="alert" style={{ margin: 0 }}>
+              {error}
+            </p>
+          ) : null}
           <button type="submit" disabled={isLoading}>
-            {isLoading ? 'Signing in...' : 'Sign in'}
+            {isLoading ? 'Signing in…' : 'Sign in'}
           </button>
         </form>
+        <p className="muted" style={{ margin: 0, fontSize: 12 }}>
+          Demo: ops@demo.dripless.local / DemoPass123!
+        </p>
       </div>
     </div>
   );

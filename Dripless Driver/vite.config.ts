@@ -46,11 +46,18 @@ export default defineConfig({
       '@shared': resolve(__dirname, '../shared-contract/src')
     }
   },
+  // Only crawl app sources — Capacitor synced android/ios bundles can confuse dep scan.
+  optimizeDeps: {
+    entries: ['index.html', 'src/**/*.{js,jsx,ts,tsx}']
+  },
   server: {
     port: 5174,
     strictPort: true,
     fs: {
       allow: [resolve(__dirname, '..')]
+    },
+    watch: {
+      ignored: ['**/android/**', '**/ios/**', '**/dist/**']
     }
   }
 })

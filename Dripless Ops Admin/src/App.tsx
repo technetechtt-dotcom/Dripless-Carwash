@@ -4,15 +4,20 @@ import { LoginPage } from './pages/LoginPage';
 import { useOpsAuth } from './contexts/OpsAuthContext';
 import {
   dashboardTabs,
-  getDashboardTabPath
+  getDashboardTabPath,
+  type DashboardTab
 } from './pages/dashboard/navigation';
 import { OverviewRoutePage } from './pages/dashboard/OverviewRoutePage';
 import { DispatchRoutePage } from './pages/dashboard/DispatchRoutePage';
 import { BookingsRoutePage } from './pages/dashboard/BookingsRoutePage';
 import { CustomersRoutePage } from './pages/dashboard/CustomersRoutePage';
 import { DriversRoutePage } from './pages/dashboard/DriversRoutePage';
-import { NotificationsRoutePage } from './pages/dashboard/NotificationsRoutePage';
 import { SpecialsRoutePage } from './pages/dashboard/SpecialsRoutePage';
+import { IncidentsRoutePage } from './pages/dashboard/IncidentsRoutePage';
+import { InboxRoutePage } from './pages/dashboard/InboxRoutePage';
+import { CommunicationsRoutePage } from './pages/dashboard/CommunicationsRoutePage';
+import { AuditRoutePage } from './pages/dashboard/AuditRoutePage';
+import { ReportsRoutePage } from './pages/dashboard/ReportsRoutePage';
 
 const ProtectedRoute = ({ children }: { children: JSX.Element }) => {
   const { isAuthenticated, isLoading } = useOpsAuth();
@@ -21,15 +26,19 @@ const ProtectedRoute = ({ children }: { children: JSX.Element }) => {
   return children;
 };
 
-const pageByTab = {
+const pageByTab: Record<DashboardTab, JSX.Element> = {
   overview: <OverviewRoutePage />,
   dispatch: <DispatchRoutePage />,
   bookings: <BookingsRoutePage />,
-  specials: <SpecialsRoutePage />,
-  customers: <CustomersRoutePage />,
+  incidents: <IncidentsRoutePage />,
   drivers: <DriversRoutePage />,
-  notifications: <NotificationsRoutePage />
-} as const;
+  customers: <CustomersRoutePage />,
+  inbox: <InboxRoutePage />,
+  communications: <CommunicationsRoutePage />,
+  specials: <SpecialsRoutePage />,
+  reports: <ReportsRoutePage />,
+  audit: <AuditRoutePage />
+};
 
 export const App = () => {
   const { isAuthenticated } = useOpsAuth();
@@ -40,13 +49,18 @@ export const App = () => {
         path={OPS_ADMIN_ROUTES.LOGIN}
         element={
           isAuthenticated ?
-          <Navigate to={getDashboardTabPath('overview')} replace /> :
-          <LoginPage />
+            <Navigate to={getDashboardTabPath('overview')} replace />
+          : <LoginPage />
         }
       />
       <Route
         path={OPS_ADMIN_ROUTES.DASHBOARD}
         element={<Navigate to={getDashboardTabPath('overview')} replace />}
+      />
+      {/* Legacy notifications path → inbox */}
+      <Route
+        path="/dashboard/notifications"
+        element={<Navigate to={getDashboardTabPath('inbox')} replace />}
       />
       {dashboardTabs.map((tab) => (
         <Route
