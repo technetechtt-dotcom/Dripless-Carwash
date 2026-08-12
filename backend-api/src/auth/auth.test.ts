@@ -23,7 +23,7 @@ describe('auth security', () => {
             {
               slug: 'basic',
               name: 'Basic Wash',
-              basePrice: 15.99,
+              basePrice: 1599,
               ecoPointsAward: 160
             }
           ]

@@ -22,7 +22,12 @@ opsRouter.get('/dashboard/summary', async (_req, res, next) => {
       suspendedCustomers,
       suspendedDrivers,
       pendingDriverVerifications,
-      unassignedBookings
+      unassignedBookings,
+      slaBreaches,
+      availableDrivers,
+      paymentFailures,
+      openIncidents,
+      cancelledBookings
     ] = await Promise.all([
       prisma.customerProfile.count(),
       prisma.driverProfile.count(),
@@ -34,8 +39,28 @@ opsRouter.get('/dashboard/summary', async (_req, res, next) => {
       prisma.customerProfile.count({ where: { status: 'SUSPENDED' } }),
       prisma.driverProfile.count({ where: { status: 'SUSPENDED' } }),
       prisma.driverProfile.count({ where: { verificationStatus: 'PENDING' } }),
-      prisma.booking.count({ where: { driverId: null } })
+      prisma.booking.count({ where: { driverId: null, status: { not: 'CANCELLED' } } }),
+      prisma.incident.count({ where: { severity: 'high', status: { not: 'RESOLVED' } } }),
+      prisma.driverProfile.count({ where: { online: true, status: 'ACTIVE', verificationStatus: 'VERIFIED' } }),
+      prisma.payment.count({ where: { status: 'FAILED' } }),
+      prisma.incident.count({ where: { status: { in: ['OPEN', 'ACKNOWLEDGED'] } } }),
+      prisma.booking.count({ where: { status: 'CANCELLED' } })
     ]);
+    const totalTerminal = completedBookings + cancelledBookings;
+    const completionRate = totalTerminal ? completedBookings / totalTerminal : 0;
+    const cancellationRate = totalTerminal ? cancelledBookings / totalTerminal : 0;
+    const assignments = await prisma.bookingAssignment.findMany({
+      take: 50,
+      orderBy: { createdAt: 'desc' },
+      include: { booking: true }
+    });
+    const averageAssignmentMinutes =
+      assignments.length === 0
+        ? 0
+        : assignments.reduce((sum, row) => {
+            const ms = row.createdAt.getTime() - row.booking.createdAt.getTime();
+            return sum + ms / 60000;
+          }, 0) / assignments.length;
     res.json({
       totalCustomers,
       totalDrivers,
@@ -45,7 +70,16 @@ opsRouter.get('/dashboard/summary', async (_req, res, next) => {
       suspendedCustomers,
       suspendedDrivers,
       pendingDriverVerifications,
-      unassignedBookings
+      unassignedBookings,
+      unassignedJobs: unassignedBookings,
+      activeJobs: activeBookings,
+      slaBreaches,
+      availableDrivers,
+      paymentFailures,
+      openIncidents,
+      averageAssignmentMinutes,
+      completionRate,
+      cancellationRate
     });
   } catch (error) {
     next(error);
@@ -554,9 +588,123 @@ opsRouter.post(
         type: req.body.type
       }));
       await prisma.notification.createMany({ data: rows });
+      await prisma.broadcast.create({
+        data: {
+          title: req.body.title,
+          message: req.body.message,
+          audience: [...roles].join(','),
+          sentAt: new Date(),
+          createdById: req.auth!.profileId
+        }
+      });
       res.status(201).json({ created: rows.length });
     } catch (error) {
       next(error);
     }
   }
 );
+
+opsRouter.get('/search', permissionRequired('bookings:read'), async (req, res, next) => {
+  try {
+    const q = String(req.query.q || '').trim();
+    if (q.length < 2) return res.json({ customers: [], drivers: [], bookings: [], incidents: [] });
+    const [customers, drivers, bookings, incidents] = await Promise.all([
+      prisma.customerProfile.findMany({
+        where: { OR: [{ name: { contains: q, mode: 'insensitive' } }, { phone: { contains: q } }] },
+        take: 10,
+        include: { user: true }
+      }),
+      prisma.driverProfile.findMany({
+        where: { OR: [{ name: { contains: q, mode: 'insensitive' } }, { plateNumber: { contains: q, mode: 'insensitive' } }] },
+        take: 10
+      }),
+      prisma.booking.findMany({
+        where: { OR: [{ id: { contains: q } }, { reference: { contains: q, mode: 'insensitive' } }] },
+        take: 10
+      }),
+      prisma.incident.findMany({
+        where: { reason: { contains: q, mode: 'insensitive' } },
+        take: 10
+      })
+    ]);
+    res.json({
+      customers: customers.map(mapCustomerProfile),
+      drivers: drivers.map(mapDriverProfile),
+      bookings: bookings.map(mapBookingDto),
+      incidents: incidents.map(mapIncident)
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+opsRouter.get('/finance/payments', permissionRequired('bookings:read'), async (_req, res, next) => {
+  try {
+    const rows = await prisma.payment.findMany({ orderBy: { createdAt: 'desc' }, take: 100 });
+    res.json(rows);
+  } catch (error) {
+    next(error);
+  }
+});
+
+opsRouter.get('/finance/payouts', permissionRequired('drivers:read'), async (_req, res, next) => {
+  try {
+    const rows = await prisma.driverPayout.findMany({ orderBy: { createdAt: 'desc' }, take: 100 });
+    res.json(rows);
+  } catch (error) {
+    next(error);
+  }
+});
+
+opsRouter.post(
+  '/drivers/:driverId/documents/:documentId/review',
+  permissionRequired('drivers:verify'),
+  validate(
+    z.object({
+      status: z.enum(['APPROVED', 'REJECTED']),
+      reason: z.string().max(500).optional()
+    })
+  ),
+  async (req, res, next) => {
+    try {
+      const doc = await prisma.driverDocument.update({
+        where: { id: String(req.params.documentId) },
+        data: {
+          status: req.body.status,
+          rejectionReason: req.body.reason,
+          reviewedById: req.auth!.profileId,
+          reviewedAt: new Date()
+        }
+      });
+      if (req.body.status === 'APPROVED') {
+        const pending = await prisma.driverDocument.count({
+          where: { driverId: String(req.params.driverId), status: 'PENDING' }
+        });
+        if (pending === 0) {
+          await prisma.driverProfile.update({
+            where: { id: String(req.params.driverId) },
+            data: { verificationStatus: 'VERIFIED', status: 'ACTIVE', verificationNote: null }
+          });
+        }
+      } else {
+        await prisma.driverProfile.update({
+          where: { id: String(req.params.driverId) },
+          data: { verificationStatus: 'REJECTED', verificationNote: req.body.reason }
+        });
+      }
+      res.json(doc);
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+opsRouter.get('/settings', async (_req, res, next) => {
+  try {
+    const rows = await prisma.platformSetting.findMany();
+    res.json(Object.fromEntries(rows.map((r) => [r.key, r.value])));
+  } catch (error) {
+    next(error);
+  }
+});
+

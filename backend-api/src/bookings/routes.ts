@@ -14,6 +14,11 @@ import {
 } from './dispatch.js';
 import { assertWashCompletable } from '../evidence/routes.js';
 import { mapBookingDto } from '../dto/mappers.js';
+import { bookingReference } from '../lib/ids.js';
+import { assertInServiceArea, roadRoute } from '../geo/zones.js';
+import { publishEvent } from '../lib/events.js';
+import { processRefund } from '../payments/service.js';
+import { accrueDriverEarning } from '../payouts/routes.js';
 import type { BookingStatus } from '@prisma/client';
 
 export const bookingsRouter = Router();
@@ -45,7 +50,12 @@ const createBookingSchema = z.object({
   specialDiscountAmount: z.number().optional(),
   scheduledAt: z.string().optional().nullable(),
   scheduledDate: z.string().optional(),
-  scheduledTime: z.string().optional()
+  scheduledTime: z.string().optional(),
+  vehicleId: z.string().optional(),
+  vehicleSize: z.string().optional(),
+  addOnSlugs: z.array(z.string()).optional(),
+  conditionNotes: z.string().max(500).optional(),
+  accessInstructions: z.string().max(500).optional()
 });
 
 const statusSchema = z.object({
@@ -102,7 +112,10 @@ bookingsRouter.post(
         optionSlug,
         promoCode: req.body.promoCode || req.body.appliedSpecialPromoCode,
         role: 'customer',
-        userId: customer.userId
+        userId: customer.userId,
+        vehicleSize: req.body.vehicleSize,
+        addOnSlugs: req.body.addOnSlugs,
+        condition: req.body.conditionNotes
       });
 
       const pickup = await resolveCoordinatesAsync({
@@ -116,6 +129,15 @@ bookingsRouter.post(
         label: req.body.destinationLocation
       });
 
+      const area = await assertInServiceArea(pickup, req.body.pickupLocation);
+      let routeDistanceKm: number | undefined;
+      let routeEtaMinutes: number | undefined;
+      if (pickup && destination) {
+        const route = await roadRoute(pickup, destination);
+        routeDistanceKm = route.distanceKm;
+        routeEtaMinutes = route.etaMinutes;
+      }
+
       const scheduledAt =
         req.body.scheduledAt ||
         (req.body.scheduledDate && req.body.scheduledTime
@@ -125,7 +147,10 @@ bookingsRouter.post(
       const booking = await prisma.$transaction(async (tx) => {
         const created = await tx.booking.create({
           data: {
+            reference: bookingReference(),
             customerId,
+            vehicleId: req.body.vehicleId,
+            serviceAreaId: area?.id,
             serviceSlug: priced.serviceSlug,
             serviceName: priced.serviceName,
             optionSlug: priced.optionSlug,
@@ -134,6 +159,7 @@ bookingsRouter.post(
             price: priced.price,
             basePrice: priced.basePrice,
             discountAmount: priced.discountAmount,
+            surchargeCents: priced.surchargeCents ?? 0,
             promoCode: priced.promoCode,
             ecoPoints: priced.ecoPoints,
             pickupLocation: req.body.pickupLocation,
@@ -142,8 +168,14 @@ bookingsRouter.post(
             pickupLng: pickup?.lng ?? null,
             destinationLat: destination?.lat ?? null,
             destinationLng: destination?.lng ?? null,
+            routeDistanceKm,
+            routeEtaMinutes,
             paymentMethod: req.body.paymentMethod ?? null,
             paymentStatus: 'UNPAID',
+            vehicleSize: req.body.vehicleSize || 'STANDARD',
+            addOnSlugs: req.body.addOnSlugs || [],
+            conditionNotes: req.body.conditionNotes,
+            accessInstructions: req.body.accessInstructions,
             scheduledAt: scheduledAt ? new Date(scheduledAt) : null
           }
         });
@@ -177,6 +209,8 @@ bookingsRouter.post(
           'medium'
         );
       }
+      publishEvent('booking.created', { bookingId: booking.id, customerId });
+      if (assigned) publishEvent('booking.assigned', { bookingId: booking.id, driverId: assigned.driverId });
 
       const fresh = await prisma.booking.findUnique({
         where: { id: booking.id },
@@ -392,9 +426,131 @@ bookingsRouter.patch(
         return row;
       });
 
+      publishEvent('booking.status', { bookingId: updated.id, status: nextStatus });
+      if (nextStatus === 'COMPLETED') {
+        await accrueDriverEarning(updated.id);
+      }
       res.json(mapBookingDto(updated));
     } catch (error) {
       next(error);
     }
   }
 );
+
+bookingsRouter.get('/:bookingId/policy', authRequired, async (req, res, next) => {
+  try {
+    const booking = await prisma.booking.findUnique({
+      where: { id: String(req.params.bookingId) }
+    });
+    if (!booking) throw new HttpError(404, 'Booking not found');
+    res.json(cancellationPolicy(booking.status));
+  } catch (error) {
+    next(error);
+  }
+});
+
+bookingsRouter.post(
+  '/:bookingId/cancel',
+  authRequired,
+  validate(z.object({ reason: z.string().max(500).optional() })),
+  async (req, res, next) => {
+    try {
+      const booking = await prisma.booking.findUnique({
+        where: { id: String(req.params.bookingId) },
+        include: { payments: true }
+      });
+      if (!booking) throw new HttpError(404, 'Booking not found');
+      if (req.auth!.role === 'customer' && booking.customerId !== req.auth!.profileId) {
+        throw new HttpError(403, 'Forbidden');
+      }
+      const policy = cancellationPolicy(booking.status);
+      const updated = await prisma.booking.update({
+        where: { id: booking.id },
+        data: {
+          status: 'CANCELLED',
+          cancelledAt: new Date(),
+          cancellationReason: req.body.reason,
+          cancellationFeeCents: policy.feeCents
+        },
+        include: { customer: true }
+      });
+      if (booking.driverId) {
+        await prisma.driverProfile.update({
+          where: { id: booking.driverId },
+          data: { activeBookingId: null }
+        });
+      }
+      const paid = booking.payments.find((p) => p.status === 'PAID' || p.status === 'PARTIALLY_REFUNDED');
+      if (paid && policy.refundable) {
+        await processRefund({
+          paymentId: paid.id,
+          amountCents: paid.amountZar,
+          reason: req.body.reason || 'Customer cancellation',
+          actorId: req.auth!.profileId,
+          cancellationFeeCents: policy.feeCents
+        });
+      }
+      publishEvent('booking.status', { bookingId: booking.id, status: 'CANCELLED' });
+      res.json({ ...mapBookingDto(updated), policy });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+bookingsRouter.post(
+  '/:bookingId/reschedule',
+  authRequired,
+  validate(z.object({ scheduledAt: z.string().min(8) })),
+  async (req, res, next) => {
+    try {
+      const booking = await prisma.booking.findUnique({
+        where: { id: String(req.params.bookingId) }
+      });
+      if (!booking) throw new HttpError(404, 'Booking not found');
+      if (req.auth!.role === 'customer' && booking.customerId !== req.auth!.profileId) {
+        throw new HttpError(403, 'Forbidden');
+      }
+      if (['COMPLETED', 'CANCELLED', 'IN_PROGRESS'].includes(booking.status)) {
+        throw new HttpError(400, 'Booking cannot be rescheduled');
+      }
+      const updated = await prisma.booking.update({
+        where: { id: booking.id },
+        data: {
+          scheduledAt: new Date(req.body.scheduledAt),
+          rescheduledFromId: booking.id,
+          status: 'PENDING',
+          driverId: null
+        },
+        include: { customer: true }
+      });
+      await autoAssignDriver(updated.id);
+      res.json(mapBookingDto(updated));
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+function cancellationPolicy(status: string) {
+  if (status === 'PENDING' || status === 'CONFIRMED') {
+    return {
+      refundable: true,
+      feeCents: 0,
+      summary: 'Free cancellation before the operator is en route.'
+    };
+  }
+  if (status === 'EN_ROUTE' || status === 'ARRIVED') {
+    return {
+      refundable: true,
+      feeCents: 2500,
+      summary: 'R25.00 cancellation fee after dispatch.'
+    };
+  }
+  return {
+    refundable: false,
+    feeCents: 0,
+    summary: 'No refund once the wash is in progress or completed. Rewash guarantee may apply.'
+  };
+}
+

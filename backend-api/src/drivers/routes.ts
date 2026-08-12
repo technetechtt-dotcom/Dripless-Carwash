@@ -58,6 +58,18 @@ driversRouter.patch(
           lat: req.body.lat,
           lng: req.body.lng,
           heading: req.body.heading ?? null,
+          speedKph: req.body.speedKph ?? null,
+          spoofSuspect: Boolean(
+            req.body.speedKph && req.body.speedKph > 180
+          )
+        }
+      });
+      await prisma.driverLocationHistory.create({
+        data: {
+          driverId,
+          lat: req.body.lat,
+          lng: req.body.lng,
+          heading: req.body.heading ?? null,
           speedKph: req.body.speedKph ?? null
         }
       });

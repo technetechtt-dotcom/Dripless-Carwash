@@ -54,3 +54,11 @@ npm run stop:all
 - Customer app: `http://localhost:5173`
 - Driver app: `http://localhost:5174`
 - Ops admin app: `http://localhost:5175`
+
+## Production notes
+
+Money is stored as **integer cents**. Paystack is the primary South African payment provider. See `docs/OPERATIONS.md`, `docs/PRIVACY.md`, `docs/RESTORE.md`, `docs/PILOT.md`, and `docs/SOPS.md`.
+
+```bash
+docker compose up postgres redis
+```

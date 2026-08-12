@@ -41,24 +41,24 @@ async function main() {
   }
 
   await upsertService('car-wash', 'Car Wash', [
-    { slug: 'basic', name: 'Basic Wash', basePrice: 15.99, ecoPointsAward: 160 },
-    { slug: 'premium', name: 'Full Valet', basePrice: 24.99, ecoPointsAward: 250 },
-    { slug: 'custom', name: 'Detailing Package', basePrice: 34.99, ecoPointsAward: 320 }
+    { slug: 'basic', name: 'Basic Wash', basePrice: 1599, ecoPointsAward: 160 },
+    { slug: 'premium', name: 'Full Valet', basePrice: 2499, ecoPointsAward: 250 },
+    { slug: 'custom', name: 'Detailing Package', basePrice: 3499, ecoPointsAward: 320 }
   ]);
   await upsertService('taxi', 'Eco Taxi', [
-    { slug: 'standard', name: 'Standard Ride', basePrice: 18.5, ecoPointsAward: 185 }
+    { slug: 'standard', name: 'Standard Ride', basePrice: 1850, ecoPointsAward: 185 }
   ]);
   await upsertService('delivery', 'Parcel Delivery', [
-    { slug: 'standard', name: 'Standard Parcel', basePrice: 12, ecoPointsAward: 120 }
+    { slug: 'standard', name: 'Standard Parcel', basePrice: 1200, ecoPointsAward: 120 }
   ]);
   await upsertService('window-solar-clean', 'Window & Solar Cleaning', [
-    { slug: 'window', name: 'Window Cleaning', basePrice: 39.99, ecoPointsAward: 400 },
-    { slug: 'solar', name: 'Solar Panel Cleaning', basePrice: 45, ecoPointsAward: 450 }
+    { slug: 'window', name: 'Window Cleaning', basePrice: 3999, ecoPointsAward: 400 },
+    { slug: 'solar', name: 'Solar Panel Cleaning', basePrice: 4500, ecoPointsAward: 450 }
   ]);
   await upsertService('home-service', 'Home Service', [
-    { slug: 'mattress', name: 'Mattress Clean', basePrice: 55, ecoPointsAward: 500 },
-    { slug: 'couch', name: 'Couch Clean', basePrice: 65, ecoPointsAward: 550 },
-    { slug: 'carpet', name: 'Carpet Clean', basePrice: 75, ecoPointsAward: 600 }
+    { slug: 'mattress', name: 'Mattress Clean', basePrice: 5500, ecoPointsAward: 500 },
+    { slug: 'couch', name: 'Couch Clean', basePrice: 6500, ecoPointsAward: 550 },
+    { slug: 'carpet', name: 'Carpet Clean', basePrice: 7500, ecoPointsAward: 600 }
   ]);
 
   const demoPassword = await hashPassword('DemoPass123!');
@@ -76,8 +76,11 @@ async function main() {
           id: 'customer_demo_001',
           name: 'Demo Customer',
           status: 'ACTIVE',
-          walletBalance: 50,
-          ecoPoints: 200
+          walletBalance: 5000,
+          ecoPoints: 200,
+          referralCode: 'DEMOCUST',
+          popiaConsentAt: new Date(),
+          marketingConsentAt: new Date()
         }
       }
     }
@@ -98,7 +101,8 @@ async function main() {
           vehicle: 'Toyota Corolla Hybrid',
           plateNumber: 'DEMO 123',
           status: 'ACTIVE',
-          verificationStatus: 'VERIFIED'
+          verificationStatus: 'VERIFIED',
+          online: true
         }
       }
     }
@@ -158,6 +162,94 @@ async function main() {
       isActive: true,
       approvedByAdminId: 'ops_demo_001',
       approvedAt: new Date()
+    }
+  });
+
+  const carWash = await prisma.service.findUnique({ where: { slug: 'car-wash' } });
+  if (carWash) {
+    await prisma.washPackage.upsert({
+      where: { serviceId_slug: { serviceId: carWash.id, slug: 'express' } },
+      update: {},
+      create: {
+        serviceId: carWash.id,
+        slug: 'express',
+        name: 'Express exterior',
+        durationMinutes: 35,
+        sedanCents: 1599,
+        suvCents: 1899,
+        bakkieCents: 2099,
+        truckCents: 2499
+      }
+    });
+    await prisma.serviceAddOn.upsert({
+      where: { serviceId_slug: { serviceId: carWash.id, slug: 'mats' } },
+      update: {},
+      create: {
+        serviceId: carWash.id,
+        slug: 'mats',
+        name: 'Mat cleaning',
+        priceCents: 350,
+        durationMinutes: 10
+      }
+    });
+    await prisma.serviceAddOn.upsert({
+      where: { serviceId_slug: { serviceId: carWash.id, slug: 'upholstery' } },
+      update: {},
+      create: {
+        serviceId: carWash.id,
+        slug: 'upholstery',
+        name: 'Upholstery clean',
+        priceCents: 900,
+        durationMinutes: 20
+      }
+    });
+  }
+
+  await prisma.serviceArea.upsert({
+    where: { slug: 'sandton-pilot' },
+    update: { active: true },
+    create: {
+      name: 'Sandton pilot',
+      slug: 'sandton-pilot',
+      polygonGeoJson: {
+        type: 'Polygon',
+        coordinates: [[
+          [27.95, -26.15],
+          [28.15, -26.15],
+          [28.15, -26.05],
+          [27.95, -26.05],
+          [27.95, -26.15]
+        ]]
+      }
+    }
+  });
+
+  await prisma.subscriptionPlan.upsert({
+    where: { slug: 'monthly-4' },
+    update: { active: true },
+    create: {
+      slug: 'monthly-4',
+      name: '4 washes / month',
+      monthlyCents: 4999,
+      washesIncluded: 4
+    }
+  });
+
+  await prisma.inventoryItem.upsert({
+    where: { sku: 'CHEM-WASH-1L' },
+    update: { quantity: 40 },
+    create: { sku: 'CHEM-WASH-1L', name: 'Dripless wash concentrate 1L', quantity: 40, threshold: 8, unit: 'bottle' }
+  });
+
+  await prisma.pricingRule.upsert({
+    where: { id: 'rule_heavy_dirt' },
+    update: { active: true },
+    create: {
+      id: 'rule_heavy_dirt',
+      name: 'Heavy dirt / mud surcharge',
+      ruleType: 'CONDITION',
+      condition: 'HEAVY_DIRT',
+      amountCents: 500
     }
   });
 

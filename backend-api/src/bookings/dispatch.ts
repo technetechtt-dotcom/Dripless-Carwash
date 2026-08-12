@@ -33,6 +33,7 @@ export async function rankDriversForBooking(bookingId: string, limit = 5) {
     where: {
       status: 'ACTIVE',
       verificationStatus: 'VERIFIED',
+      online: true,
       OR: [{ activeBookingId: null }, { activeBookingId: bookingId }]
     },
     include: { location: true }

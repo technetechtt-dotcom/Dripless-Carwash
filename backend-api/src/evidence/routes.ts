@@ -1,19 +1,15 @@
 import { Router } from 'express';
-import { createHash, randomBytes } from 'node:crypto';
-import { mkdirSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { createHash } from 'node:crypto';
 import { z } from 'zod';
 import { prisma } from '../db/prisma.js';
 import { env } from '../config/env.js';
 import { authRequired, roleRequired } from '../middleware/auth.js';
 import { validate } from '../middleware/validate.js';
 import { HttpError } from '../middleware/error.js';
+import { storeEvidenceObject } from './storage.js';
 
 export const evidenceRouter = Router();
 
-function ensureStorageDir() {
-  mkdirSync(env.EVIDENCE_STORAGE_DIR, { recursive: true });
-}
 
 evidenceRouter.get('/:bookingId/evidence', authRequired, async (req, res, next) => {
   try {
@@ -93,12 +89,21 @@ evidenceRouter.post(
       }
 
       let urlOrData = req.body.notes || 'note';
+      let storageKey: string | undefined;
+      let mimeType: string | undefined;
+      let byteSize: number | undefined;
+      let checksum: string | undefined;
       if (req.body.dataUrl) {
-        ensureStorageDir();
-        const filename = `${bookingId}_${req.body.kind}_${randomBytes(6).toString('hex')}.txt`;
-        const full = join(env.EVIDENCE_STORAGE_DIR, filename);
-        writeFileSync(full, req.body.dataUrl, 'utf8');
-        urlOrData = full;
+        const stored = await storeEvidenceObject({
+          bookingId,
+          kind: req.body.kind,
+          dataUrl: req.body.dataUrl
+        });
+        urlOrData = stored.url;
+        storageKey = stored.key;
+        mimeType = stored.mimeType;
+        byteSize = stored.byteSize;
+        checksum = stored.checksum;
       }
 
       const row = await prisma.bookingEvidence.create({
@@ -106,6 +111,10 @@ evidenceRouter.post(
           bookingId,
           kind: req.body.kind,
           urlOrData,
+          storageKey,
+          mimeType,
+          byteSize,
+          checksum,
           notes: req.body.notes,
           actorId: req.auth!.profileId,
           actorRole: req.auth!.role

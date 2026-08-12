@@ -126,6 +126,7 @@ export type PriceResolution = {
   price: number;
   ecoPoints: number;
   promoCode: string | null;
+  surchargeCents?: number;
 };
 
 const SERVICE_SCOPE_MAP: Record<string, string> = {
@@ -136,12 +137,24 @@ const SERVICE_SCOPE_MAP: Record<string, string> = {
   'home-service': 'HOME_SERVICE'
 };
 
+const SIZE_MULTIPLIER: Record<string, number> = {
+  ALL: 1,
+  STANDARD: 1,
+  SEDAN: 1,
+  SUV: 1.2,
+  BAKKIE: 1.25,
+  TRUCK: 1.4
+};
+
 export async function resolveServerPrice(input: {
   serviceSlug: string;
   optionSlug: string;
   promoCode?: string | null;
   role: 'customer' | 'driver';
   userId: string;
+  vehicleSize?: string | null;
+  addOnSlugs?: string[];
+  condition?: string | null;
 }): Promise<PriceResolution> {
   const service = await prisma.service.findFirst({
     where: { slug: input.serviceSlug, active: true },
@@ -185,7 +198,7 @@ export async function resolveServerPrice(input: {
     }
     discountAmount =
       promotion.discountType === 'PERCENT'
-        ? (option.basePrice * promotion.discountValue) / 100
+        ? Math.round((option.basePrice * promotion.discountValue) / 100)
         : promotion.discountValue;
     discountAmount = Math.max(0, Math.min(option.basePrice, discountAmount));
     promoCode = promotion.promoCode;
@@ -206,16 +219,33 @@ export async function resolveServerPrice(input: {
     });
   }
 
-  const price = Math.max(0, Number((option.basePrice - discountAmount).toFixed(2)));
+  const sizeMult = SIZE_MULTIPLIER[(input.vehicleSize || 'STANDARD').toUpperCase()] ?? 1;
+  let addOnCents = 0;
+  if (input.addOnSlugs?.length) {
+    const addOns = await prisma.serviceAddOn.findMany({
+      where: { serviceId: service.id, slug: { in: input.addOnSlugs }, active: true }
+    });
+    addOnCents = addOns.reduce((sum, row) => sum + row.priceCents, 0);
+  }
+  let surcharge = 0;
+  if (input.condition) {
+    const rule = await prisma.pricingRule.findFirst({
+      where: { active: true, condition: input.condition }
+    });
+    if (rule) surcharge = rule.amountCents;
+  }
+  const sized = Math.round(option.basePrice * sizeMult);
+  const price = Math.max(0, sized + addOnCents + surcharge - discountAmount);
   return {
     serviceSlug: service.slug,
     serviceName: service.name,
     optionSlug: option.slug,
     optionName: option.name,
-    basePrice: option.basePrice,
-    discountAmount: Number(discountAmount.toFixed(2)),
+    basePrice: sized,
+    discountAmount,
     price,
     ecoPoints: option.ecoPointsAward,
-    promoCode
+    promoCode,
+    surchargeCents: surcharge
   };
 }

@@ -24,6 +24,8 @@ import {
 import { computeLockUntil, progressiveDelayMs, sleep } from './lockout.js';
 import { authRequired } from '../middleware/auth.js';
 import { env } from '../config/env.js';
+import { z } from 'zod';
+import { mapCustomerProfile, mapDriverProfile } from '../dto/mappers.js';
 
 export const authRouter = Router();
 
@@ -132,10 +134,9 @@ async function handleLogin(
 
   await prisma.user.update({
     where: { id: user.id },
-    data: { failedLoginCount: 0, lockedUntil: null }
+    data: { failedLoginCount: 0, lockedUntil: null, lastLoginAt: new Date() }
   });
 
-  const tokens = await issueSessionTokens(user.id);
   const profile =
     expectedRole === 'customer'
       ? user.customerProfile
@@ -147,11 +148,33 @@ async function handleLogin(
     throw new HttpError(500, 'Profile missing');
   }
 
-  return toSessionResponse(
-    user,
-    tokens,
-    profile as unknown as Record<string, unknown> | null
-  );
+  if (user.mfaEnabled) {
+    const token = generateOpaqueToken(24);
+    await prisma.mfaChallenge.create({
+      data: {
+        userId: user.id,
+        tokenHash: hashToken(token),
+        expiresAt: new Date(Date.now() + 5 * 60_000)
+      }
+    });
+    return {
+      mfaRequired: true,
+      mfaToken: token,
+      email: user.email,
+      role: user.role
+    };
+  }
+
+  if (expectedRole === 'ops_admin' && env.isProduction && !env.demoMode && !user.mfaEnabled) {
+    const tokens = await issueSessionTokens(user.id);
+    return {
+      ...toSessionResponse(user, tokens, profile as unknown as Record<string, unknown>),
+      mustEnableMfa: true
+    };
+  }
+
+  const tokens = await issueSessionTokens(user.id);
+  return toSessionResponse(user, tokens, profile as unknown as Record<string, unknown>);
 }
 
 authRouter.post(
@@ -175,7 +198,8 @@ authRouter.post(
             create: {
               id: `customer_${Date.now().toString(36)}`,
               name,
-              phone
+              phone,
+              referralCode: `C${Date.now().toString(36).toUpperCase()}`
             }
           }
         },
@@ -398,6 +422,12 @@ authRouter.post(
         if (env.demoMode) {
           return res.json({ message: 'Password reset token issued', resetToken: token });
         }
+        const { enqueue } = await import('../lib/queue.js');
+        await enqueue('email.send', {
+          to: user.email,
+          subject: 'Reset your Dripless password',
+          text: 'A password reset was requested. Use the link from your Dripless app.'
+        });
       }
       res.json({ message: 'If the account exists, a reset email was sent' });
     } catch (error) {
@@ -441,19 +471,86 @@ authRouter.post(
   }
 );
 
+authRouter.post(
+  '/phone/request',
+  authRequired,
+  authRateLimiter,
+  validate(z.object({ phone: z.string().min(7).max(32) })),
+  async (req, res, next) => {
+    try {
+      const code = env.demoMode ? '123456' : String(Math.floor(100000 + Math.random() * 900000));
+      await prisma.phoneOtp.create({
+        data: {
+          phone: req.body.phone,
+          userId: (
+            await prisma.user.findFirstOrThrow({
+              where: {
+                OR: [
+                  { customerProfile: { id: req.auth!.profileId } },
+                  { driverProfile: { id: req.auth!.profileId } }
+                ]
+              }
+            })
+          ).id,
+          codeHash: hashToken(code),
+          expiresAt: new Date(Date.now() + 10 * 60_000)
+        }
+      });
+      const { enqueue } = await import('../lib/queue.js');
+      await enqueue('sms.send', { to: req.body.phone, body: `Dripless code: ${code}` });
+      res.json({ message: 'OTP sent', demoCode: env.demoMode ? code : undefined });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+authRouter.post(
+  '/phone/verify',
+  authRequired,
+  authRateLimiter,
+  validate(z.object({ phone: z.string().min(7).max(32), code: z.string().min(4).max(8) })),
+  async (req, res, next) => {
+    try {
+      const record = await prisma.phoneOtp.findFirst({
+        where: {
+          phone: req.body.phone,
+          codeHash: hashToken(req.body.code),
+          usedAt: null,
+          expiresAt: { gt: new Date() }
+        },
+        orderBy: { createdAt: 'desc' }
+      });
+      if (!record) throw new HttpError(400, 'Invalid or expired code');
+      await prisma.phoneOtp.update({ where: { id: record.id }, data: { usedAt: new Date() } });
+      if (record.userId) {
+        await prisma.user.update({
+          where: { id: record.userId },
+          data: { phoneVerifiedAt: new Date() }
+        });
+      }
+      res.json({ message: 'Phone verified' });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
 authRouter.get('/me', authRequired, async (req, res, next) => {
   try {
     if (req.auth!.role === 'customer') {
       const profile = await prisma.customerProfile.findUnique({
-        where: { id: req.auth!.profileId }
+        where: { id: req.auth!.profileId },
+        include: { user: true }
       });
-      return res.json(profile);
+      return res.json(profile ? mapCustomerProfile(profile) : null);
     }
     if (req.auth!.role === 'driver') {
       const profile = await prisma.driverProfile.findUnique({
-        where: { id: req.auth!.profileId }
+        where: { id: req.auth!.profileId },
+        include: { user: true, location: true }
       });
-      return res.json(profile);
+      return res.json(profile ? mapDriverProfile(profile) : null);
     }
     const profile = await prisma.opsAdminProfile.findUnique({
       where: { id: req.auth!.profileId }

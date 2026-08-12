@@ -10,6 +10,8 @@ export const LoginPage = () => {
     apiRuntimeConfig.getApiBaseUrl() || 'http://localhost:4000'
   );
   const [error, setError] = useState('');
+  const [mfaToken, setMfaToken] = useState('');
+  const [mfaCode, setMfaCode] = useState('');
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -20,10 +22,19 @@ export const LoginPage = () => {
       } else {
         apiRuntimeConfig.clearApiBaseUrl();
       }
-      await login(email, password);
+      if (mfaToken) {
+        await login(email, password, mfaCode, mfaToken);
+      } else {
+        await login(email, password);
+      }
     } catch (authError) {
       const message =
         authError instanceof Error ? authError.message : 'Login failed';
+      if (message === 'MFA_REQUIRED') {
+        setMfaToken((authError as Error & { mfaToken?: string }).mfaToken || '');
+        setError('Enter the authenticator code to continue.');
+        return;
+      }
       setError(message);
     }
   };
@@ -76,6 +87,19 @@ export const LoginPage = () => {
               autoComplete="current-password"
             />
           </label>
+          {mfaToken ? (
+            <label className="stack">
+              <span>Authenticator code</span>
+              <input
+                type="text"
+                inputMode="numeric"
+                value={mfaCode}
+                onChange={(event) => setMfaCode(event.target.value)}
+                required
+                autoComplete="one-time-code"
+              />
+            </label>
+          ) : null}
           {error ? (
             <p className="card alert-danger" role="alert" style={{ margin: 0 }}>
               {error}

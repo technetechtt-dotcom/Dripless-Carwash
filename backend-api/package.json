@@ -11,6 +11,7 @@
     "check": "npm run typecheck",
     "test": "vitest run",
     "lint": "tsc -p tsconfig.json --noEmit",
+    "lint:eslint": "eslint src --ext .ts",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate deploy",
     "prisma:migrate:dev": "prisma migrate dev",
@@ -26,6 +27,7 @@
     "express": "^4.21.2",
     "express-rate-limit": "^8.0.1",
     "helmet": "^8.1.0",
+    "ioredis": "^5.6.1",
     "zod": "^4.0.17"
   },
   "prisma": {
@@ -37,6 +39,8 @@
     "@types/express": "^5.0.3",
     "@types/node": "^24.2.1",
     "@types/supertest": "^6.0.3",
+    "eslint": "^9.9.0",
+    "typescript-eslint": "^8.8.0",
     "prisma": "^6.14.0",
     "supertest": "^7.1.4",
     "tsx": "^4.20.4",

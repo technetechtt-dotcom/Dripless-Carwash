@@ -2,8 +2,10 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { prisma } from '../db/prisma.js';
 import { authRequired, roleRequired } from '../middleware/auth.js';
+import { authRateLimiter } from '../middleware/rateLimit.js';
 import { validate } from '../middleware/validate.js';
 import { HttpError } from '../middleware/error.js';
+import { hashToken, issueSessionTokens } from './tokens.js';
 import {
   decryptSecret,
   encryptSecret,
@@ -114,7 +116,75 @@ mfaRouter.post(
   }
 );
 
-/** Placeholder for WebAuthn MFA UX (schema exists; full ceremony deferred). */
+mfaRouter.post(
+  '/challenge',
+  authRateLimiter,
+  validate(
+    z.object({
+      mfaToken: z.string().min(10),
+      token: z.string().min(6).max(16)
+    })
+  ),
+  async (req, res, next) => {
+    try {
+      const tokenHash = hashToken(req.body.mfaToken);
+      const challenge = await prisma.mfaChallenge.findUnique({
+        where: { tokenHash },
+        include: { user: { include: { customerProfile: true, driverProfile: true, opsProfile: true } } }
+      });
+      if (!challenge || challenge.usedAt || challenge.expiresAt < new Date()) {
+        throw new HttpError(401, 'Invalid MFA challenge');
+      }
+      const user = challenge.user;
+      if (!user.mfaSecretEnc) throw new HttpError(400, 'MFA is not configured');
+      const secret = decryptSecret(user.mfaSecretEnc);
+      const totpOk = verifyTotp(secret, req.body.token);
+      const backupOk = user.mfaBackupCodesHash.includes(hashBackupCode(req.body.token));
+      if (!totpOk && !backupOk) throw new HttpError(401, 'Invalid MFA token');
+      if (backupOk) {
+        await prisma.user.update({
+          where: { id: user.id },
+          data: {
+            mfaBackupCodesHash: user.mfaBackupCodesHash.filter(
+              (row) => row !== hashBackupCode(req.body.token)
+            )
+          }
+        });
+      }
+      await prisma.mfaChallenge.update({
+        where: { id: challenge.id },
+        data: { usedAt: new Date() }
+      });
+      const tokens = await issueSessionTokens(user.id);
+      const profile =
+        user.role === 'customer'
+          ? user.customerProfile
+          : user.role === 'driver'
+            ? user.driverProfile
+            : user.opsProfile;
+      res.json({
+        session: {
+          tokens: {
+            accessToken: tokens.accessToken,
+            refreshToken: tokens.refreshToken,
+            expiresAt: tokens.expiresAt,
+            refreshExpiresAt: tokens.refreshExpiresAt
+          },
+          payload: {
+            userId: (profile as { id?: string } | null)?.id || user.id,
+            role: user.role,
+            email: user.email,
+            emailVerified: Boolean(user.emailVerifiedAt),
+            mustChangePassword: user.mustChangePassword
+          }
+        },
+        profile
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
 mfaRouter.get('/webauthn/status', authRequired, roleRequired(['ops_admin']), async (req, res, next) => {
   try {
     const user = await prisma.user.findFirst({

@@ -13,7 +13,7 @@ interface OpsAuthContextType {
   admin: OpsAdminProfile | null;
   isLoading: boolean;
   isAuthenticated: boolean;
-  login: (email: string, password: string) => Promise<void>;
+  login: (email: string, password: string, mfaCode?: string, mfaToken?: string) => Promise<void>;
   logout: () => Promise<void>;
 }
 
@@ -39,9 +39,14 @@ export const OpsAuthProvider = ({ children }: { children: ReactNode }) => {
     setIsLoading(false);
   }, []);
 
-  const login = async (email: string, password: string) => {
+  const login = async (email: string, password: string, mfaCode?: string, mfaToken?: string) => {
     setIsLoading(true);
     try {
+      if (mfaCode && mfaToken) {
+        const profile = await authApi.completeOpsMfa(mfaToken, mfaCode);
+        setAdmin(profile);
+        return;
+      }
       const profile = await authApi.loginOpsAdmin(email, password);
       setAdmin(profile);
     } finally {

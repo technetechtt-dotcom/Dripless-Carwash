@@ -2,6 +2,7 @@
  * Shared booking DTO mapper used by bookings/drivers/ops routes.
  */
 import type { BookingStatus } from '@prisma/client';
+import { fromCents } from '../money.js';
 
 export function serviceSlugToType(serviceSlug: string): string {
   const s = serviceSlug.toLowerCase();
@@ -50,10 +51,11 @@ export function mapBookingDto(booking: {
     serviceName: booking.serviceName,
     optionName: booking.optionName,
     status: booking.status,
-    price: booking.price,
-    basePrice: booking.basePrice ?? booking.price,
-    discountAmount: booking.discountAmount ?? 0,
-    specialDiscountAmount: booking.discountAmount ?? 0,
+    reference: 'reference' in booking ? (booking as { reference?: string }).reference : undefined,
+    price: fromCents(booking.price),
+    basePrice: fromCents(booking.basePrice ?? booking.price),
+    discountAmount: fromCents(booking.discountAmount ?? 0),
+    specialDiscountAmount: fromCents(booking.discountAmount ?? 0),
     promoCode: booking.promoCode ?? null,
     appliedSpecialPromoCode: booking.promoCode ?? null,
     ecoPoints: booking.ecoPoints ?? 0,
@@ -149,7 +151,8 @@ export function mapCustomerProfile(row: {
     name: row.name,
     email: row.user?.email || '',
     phone: row.phone ?? undefined,
-    walletBalance: row.walletBalance,
+    walletBalance: fromCents(row.walletBalance),
+    walletBalanceCents: row.walletBalance,
     ecoPoints: row.ecoPoints,
     status: row.status,
     createdAt: row.createdAt.toISOString(),

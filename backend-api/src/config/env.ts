@@ -26,10 +26,26 @@ const envSchema = z.object({
   OZOW_SITE_CODE: z.string().optional().default(''),
   OZOW_API_KEY: z.string().optional().default(''),
   OZOW_PRIVATE_KEY: z.string().optional().default(''),
-  PAYMENTS_PROVIDER: z.enum(['stub', 'paystack', 'payfast', 'ozow']).default('stub'),
+  PAYMENTS_PROVIDER: z.enum(['stub', 'paystack', 'payfast', 'ozow', 'wallet']).default('stub'),
+  PAYSTACK_CALLBACK_URL: z.string().optional().default(''),
   REDIS_URL: z.string().optional().default(''),
   MFA_ENC_KEY: z.string().optional().default(''),
-  EVIDENCE_STORAGE_DIR: z.string().optional().default('data/evidence')
+  MFA_REQUIRED_OPS: z
+    .string()
+    .optional()
+    .transform((value) => value === 'true' || value === '1'),
+  EVIDENCE_STORAGE_DIR: z.string().optional().default('data/evidence'),
+  RESEND_API_KEY: z.string().optional().default(''),
+  EMAIL_FROM: z.string().optional().default('Dripless <noreply@dripless.co.za>'),
+  TWILIO_ACCOUNT_SID: z.string().optional().default(''),
+  TWILIO_AUTH_TOKEN: z.string().optional().default(''),
+  TWILIO_FROM: z.string().optional().default(''),
+  FCM_SERVER_KEY: z.string().optional().default(''),
+  S3_BUCKET: z.string().optional().default(''),
+  S3_ACCESS_KEY: z.string().optional().default(''),
+  S3_SECRET_KEY: z.string().optional().default(''),
+  S3_ENDPOINT: z.string().optional().default(''),
+  SENTRY_DSN: z.string().optional().default('')
 });
 
 const parsed = envSchema.safeParse(process.env);

@@ -1,0 +1,102 @@
+import { prisma } from '../db/prisma.js';
+import { logger } from './logger.js';
+import { getRedis } from './redis.js';
+import type { Prisma } from '@prisma/client';
+
+type JobHandler = (payload: Record<string, unknown>) => Promise<void>;
+
+const handlers = new Map<string, JobHandler>();
+let workerStarted = false;
+
+export function registerJob(queue: string, handler: JobHandler) {
+  handlers.set(queue, handler);
+}
+
+export async function enqueue(
+  queue: string,
+  payload: Record<string, unknown>,
+  opts?: { runAt?: Date; maxAttempts?: number }
+) {
+  return prisma.backgroundJob.create({
+    data: {
+      queue,
+      payload: payload as Prisma.InputJsonValue,
+      runAt: opts?.runAt ?? new Date(),
+      maxAttempts: opts?.maxAttempts ?? 5
+    }
+  });
+}
+
+async function withLock<T>(key: string, fn: () => Promise<T>): Promise<T | null> {
+  const redis = await getRedis();
+  const token = `${Date.now()}`;
+  const ok = await redis.setnx(`lock:${key}`, token);
+  if (!ok) return null;
+  await redis.expire(`lock:${key}`, 30);
+  try {
+    return await fn();
+  } finally {
+    await redis.del(`lock:${key}`);
+  }
+}
+
+export async function processDueJobs(limit = 10) {
+  return withLock('job-worker', async () => {
+    const due = await prisma.backgroundJob.findMany({
+      where: {
+        status: { in: ['PENDING', 'FAILED'] },
+        runAt: { lte: new Date() }
+      },
+      orderBy: { runAt: 'asc' },
+      take: limit
+    });
+
+    for (const job of due) {
+      const handler = handlers.get(job.queue);
+      await prisma.backgroundJob.update({
+        where: { id: job.id },
+        data: { status: 'RUNNING', lockedAt: new Date(), attempts: { increment: 1 } }
+      });
+      try {
+        if (!handler) throw new Error(`No handler for queue ${job.queue}`);
+        await handler(job.payload as Record<string, unknown>);
+        await prisma.backgroundJob.update({
+          where: { id: job.id },
+          data: { status: 'SUCCEEDED', lastError: null }
+        });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        const attempts = job.attempts + 1;
+        const dead = attempts >= job.maxAttempts;
+        await prisma.backgroundJob.update({
+          where: { id: job.id },
+          data: {
+            status: dead ? 'DEAD' : 'FAILED',
+            lastError: message,
+            runAt: new Date(Date.now() + Math.min(15 * 60_000, 2 ** attempts * 1000))
+          }
+        });
+        logger.error('job_failed', { queue: job.queue, id: job.id, message, dead });
+      }
+    }
+    return due.length;
+  });
+}
+
+export function startJobWorker() {
+  if (workerStarted) return;
+  workerStarted = true;
+  setInterval(() => {
+    processDueJobs().catch((error) => logger.error('job_worker_tick_failed', { error: String(error) }));
+  }, 5000);
+}
+
+export async function jobStats() {
+  const [pending, failed, dead, succeeded] = await Promise.all([
+    prisma.backgroundJob.count({ where: { status: 'PENDING' } }),
+    prisma.backgroundJob.count({ where: { status: 'FAILED' } }),
+    prisma.backgroundJob.count({ where: { status: 'DEAD' } }),
+    prisma.backgroundJob.count({ where: { status: 'SUCCEEDED' } })
+  ]);
+  return { pending, failed, dead, succeeded };
+}

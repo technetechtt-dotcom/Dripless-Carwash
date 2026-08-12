@@ -797,13 +797,24 @@ export const authApi = {
     requireRemoteOrMock();
     if (hasRemoteApi()) {
       const remote = await requestApi<{
-        session: AuthSession;
-        profile: OpsAdminProfile;
+        session?: AuthSession;
+        profile?: OpsAdminProfile;
+        mfaRequired?: boolean;
+        mfaToken?: string;
+        mustEnableMfa?: boolean;
       }>('/auth/ops-admin/login', {
         method: 'POST',
         body: { email, password },
         retryOnAuth: false
       });
+      if (remote.mfaRequired && remote.mfaToken) {
+        const error = new Error('MFA_REQUIRED');
+        (error as Error & { mfaToken: string }).mfaToken = remote.mfaToken;
+        throw error;
+      }
+      if (!remote.session || !remote.profile) {
+        throw new Error('Login failed');
+      }
       saveSession(remote.session);
       saveOpsAdminProfile(remote.profile);
       return remote.profile;
@@ -820,6 +831,20 @@ export const authApi = {
     saveSession(session);
     saveOpsAdminProfile(admin);
     return admin;
+  },
+
+  async completeOpsMfa(mfaToken: string, token: string): Promise<OpsAdminProfile> {
+    const remote = await requestApi<{
+      session: AuthSession;
+      profile: OpsAdminProfile;
+    }>('/auth/mfa/challenge', {
+      method: 'POST',
+      body: { mfaToken, token },
+      retryOnAuth: false
+    });
+    saveSession(remote.session);
+    saveOpsAdminProfile(remote.profile);
+    return remote.profile;
   },
 
   getCurrentOpsAdminProfile(): OpsAdminProfile | null {
@@ -2455,3 +2480,32 @@ export const specialsApi = {
     return special;
   }
 };
+
+export const paymentsApi = {
+  async createIntent(bookingId: string, provider?: string) {
+    return requestApi<{
+      paymentId: string;
+      checkoutUrl: string | null;
+      amountZar: number;
+      status: string;
+      provider: string;
+    }>('/payments/intent', {
+      method: 'POST',
+      token: getBearerToken(),
+      body: { bookingId, provider, idempotencyKey: `booking_${bookingId}` }
+    });
+  },
+  async wallet() {
+    return requestApi<{
+      walletBalance: number;
+      transactions: Array<{ id: string; amountZar: number; type: string; createdAt: string }>;
+    }>('/wallet', { token: getBearerToken() });
+  }
+};
+
+export const catalogApi = {
+  async services() {
+    return requestApi<unknown[]>('/catalog/services', { token: getBearerToken() });
+  }
+};
+
