@@ -2843,6 +2843,21 @@ export const invoicesApi = {
     downloadApiFile(`/invoices/${encodeURIComponent(invoiceId)}/download`, `${number}.pdf`)
 };
 
+export const financeApi = {
+  listPayments: () =>
+    requestApi<Array<Record<string, unknown>>>('/payments', { token: getBearerToken() }),
+  listRefunds: () =>
+    requestApi<Array<Record<string, unknown>>>('/payments/refunds', { token: getBearerToken() }),
+  listDisputes: () =>
+    requestApi<Array<Record<string, unknown>>>('/payments/disputes', { token: getBearerToken() }),
+  runReconciliation: (from: string, to: string) =>
+    requestApi<Record<string, unknown>>('/ops/reconcile', {
+      method: 'POST',
+      token: getBearerToken(),
+      body: { from, to }
+    })
+};
+
 export function subscribePlatformEvents(
   onEvent: (event: { id: string; type: string; at: string; payload: Record<string, unknown> }) => void,
   onState?: (state: 'connected' | 'reconnecting' | 'stopped') => void

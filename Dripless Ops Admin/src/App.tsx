@@ -18,6 +18,7 @@ import { InboxRoutePage } from './pages/dashboard/InboxRoutePage';
 import { CommunicationsRoutePage } from './pages/dashboard/CommunicationsRoutePage';
 import { AuditRoutePage } from './pages/dashboard/AuditRoutePage';
 import { ReportsRoutePage } from './pages/dashboard/ReportsRoutePage';
+import { FinanceRoutePage } from './pages/dashboard/FinanceRoutePage';
 import { MfaEnrollmentPage } from './pages/MfaEnrollmentPage';
 
 const ProtectedRoute = ({ children }: { children: JSX.Element }) => {
@@ -38,6 +39,7 @@ const pageByTab: Record<DashboardTab, JSX.Element> = {
   inbox: <InboxRoutePage />,
   communications: <CommunicationsRoutePage />,
   specials: <SpecialsRoutePage />,
+  finance: <FinanceRoutePage />,
   reports: <ReportsRoutePage />,
   audit: <AuditRoutePage />
 };

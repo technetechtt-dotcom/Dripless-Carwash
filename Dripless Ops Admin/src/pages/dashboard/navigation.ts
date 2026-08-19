@@ -10,6 +10,7 @@ export type DashboardTab =
   | 'inbox'
   | 'communications'
   | 'specials'
+  | 'finance'
   | 'reports'
   | 'audit';
 
@@ -38,6 +39,7 @@ export type OpsNavIconId =
   | 'inbox'
   | 'broadcast'
   | 'promo'
+  | 'finance'
   | 'reports'
   | 'audit';
 
@@ -123,6 +125,14 @@ export const dashboardTabs: OpsNavItem[] = [
     group: 'business',
     permissionsAny: ['specials:manage'],
     icon: 'promo'
+  },
+  {
+    key: 'finance',
+    label: 'Finance',
+    subtitle: 'Payments, refunds, payouts, and reconciliation',
+    group: 'business',
+    permissionsAny: ['finance:read', 'activity:read'],
+    icon: 'finance'
   },
   {
     key: 'reports',

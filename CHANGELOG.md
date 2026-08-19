@@ -4,6 +4,25 @@ All notable production changes are recorded here. Releases use immutable `vYYYY.
 
 ## Unreleased
 
+### Platform hardening and pilot readiness
+
+- Added separate `docker-compose.staging.yml` and `docker-compose.production.yml` with environment separation.
+- Added `.env.staging.example` and `.env.production.example` with all required secrets documented.
+- Enhanced `/health` endpoint with per-subsystem checks; returns 503 if Redis is down in production.
+- Enhanced `/ready` endpoint with DB/Redis/job-stats; warns on dead job accumulation.
+- Hardened Dockerfile: production-grade healthcheck, worker/api role separation, migration as separate step.
+- Added `FinanceSection` to Ops dashboard: payments, refunds, disputes, and reconciliation tabs with CSV export.
+- Added `/ops/reconcile` endpoint for on-demand payment reconciliation with audit logging.
+- Added `financeApi` to shared API contract.
+- Added `dispatch.test.ts`: dispatch race condition prevention, RBAC enforcement, pricing engine, and service-area tests.
+- Added `docs/RESTORE.md`: full backup restoration runbook including PITR, Redis, and S3 recovery procedures.
+- Added `docs/RESTORE_DRILL_LOG.md`: quarterly drill tracking.
+- Added `docs/PILOT_CHECKLIST.md`: complete pre-pilot gate checklist.
+- Updated CI workflow: added secret scanning (TruffleHog), dependency scanning (npm audit), migration drift detection.
+- Pricing engine: vehicle-size multipliers (SUV +20%, bakkie +25%, truck +40%) and condition surcharges confirmed and tested.
+
+### Previously (backend foundation)
+
 - Hardened Paystack webhooks, refunds, settlement reconciliation, wallet accounting, payouts, and finance approvals.
 - Added private evidence storage, signed transfers, image normalisation, retention, malware checks, and access auditing.
 - Added real geocoding/routing, driver GPS freshness and spoof checks, atomic dispatch, SSE replay, and background workers.

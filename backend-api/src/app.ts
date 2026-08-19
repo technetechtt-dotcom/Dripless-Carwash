@@ -29,6 +29,7 @@ import { prisma } from './db/prisma.js';
 import { authRequired } from './middleware/auth.js';
 import { redisHealth } from './lib/redis.js';
 import { jobStats } from './lib/queue.js';
+import { logger } from './lib/logger.js';
 import { subscribeSse } from './lib/events.js';
 import { geoRouter } from './geo/routes.js';
 import { invoicesRouter } from './invoices/routes.js';
@@ -84,23 +85,42 @@ export function createApp() {
 
   app.get('/health', async (_req, res) => {
     const redis = await redisHealth();
-    res.json({
-      ok: true,
-      demoMode: env.demoMode,
-      env: env.NODE_ENV,
+    const checks: Record<string, boolean | string> = {
+      redis: redis.ok,
       redisConfigured: redis.configured,
-      redisOk: redis.ok,
-      paymentsProvider: env.PAYMENTS_PROVIDER
-    });
+      paymentsProvider: env.PAYMENTS_PROVIDER,
+      geocoderProvider: env.GEOCODER_PROVIDER,
+      evidenceStorage: env.EVIDENCE_STORAGE_PROVIDER,
+      mfaRequired: env.MFA_REQUIRED_OPS || false,
+      demoMode: env.demoMode,
+      env: env.NODE_ENV
+    };
+    // In production, all critical services must be up
+    const healthy = !env.isProduction || (redis.ok && redis.configured);
+    res.status(healthy ? 200 : 503).json({ ok: healthy, checks });
   });
 
   app.get('/ready', async (_req, res) => {
     try {
       await prisma.$queryRaw`SELECT 1`;
+      const redis = await redisHealth();
       const jobs = await jobStats();
-      res.json({ ok: true, jobs });
-    } catch {
-      res.status(503).json({ ok: false });
+      const deadThreshold = 5;
+      const tooManyDead = jobs.dead >= deadThreshold;
+      if (tooManyDead) {
+        // Log but don't fail readiness — dead jobs need alerting, not traffic shedding
+        logger.warn('ready_check_dead_jobs', { dead: jobs.dead, threshold: deadThreshold });
+      }
+      res.json({
+        ok: true,
+        db: 'up',
+        redis: redis.ok ? 'up' : 'down',
+        jobs,
+        deadJobAlert: tooManyDead
+      });
+    } catch (error) {
+      logger.error('ready_check_failed', { error: String(error) });
+      res.status(503).json({ ok: false, error: 'Database unavailable' });
     }
   });
 

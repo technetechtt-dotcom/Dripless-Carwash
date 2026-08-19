@@ -40,7 +40,7 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
 
-      - name: Test
+      - name: Test with coverage
         run: npm run test:coverage
 
       - name: Build
@@ -112,8 +112,54 @@ jobs:
       - name: Lint
         run: npm run lint
 
-      - name: Test
+      - name: Test with coverage
         run: npm run test:coverage
 
       - name: Verify migration history matches schema
         run: npx prisma migrate status
+
+      - name: Check for pending migrations (schema drift)
+        run: |
+          output=$(npx prisma migrate status 2>&1)
+          if echo "$output" | grep -q "Following migration.*not yet applied\|schema drift\|drift detected"; then
+            echo "ERROR: Schema drift detected. Run 'prisma migrate dev' locally." >&2
+            exit 1
+          fi
+          echo "Migration status: clean"
+
+  secret-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+
+      - name: TruffleHog secret scan
+        uses: trufflesecurity/trufflehog@main
+        with:
+          path: ./
+          base: ${{ github.event.repository.default_branch }}
+          extra_args: --only-verified
+
+  dependency-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Run npm audit (backend)
+        working-directory: backend-api
+        run: npm audit --audit-level=high --omit=dev || true
+
+      - name: Run npm audit (customer)
+        working-directory: Dripless Customer
+        run: npm audit --audit-level=high --omit=dev || true
+
+      - name: Run npm audit (driver)
+        working-directory: Dripless Driver
+        run: npm audit --audit-level=high --omit=dev || true
+
+      - name: Run npm audit (ops)
+        working-directory: Dripless Ops Admin
+        run: npm audit --audit-level=high --omit=dev || true

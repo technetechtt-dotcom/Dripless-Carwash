@@ -963,3 +963,60 @@ opsRouter.get('/settings', async (_req, res, next) => {
   }
 });
 
+opsRouter.post(
+  '/reconcile',
+  permissionRequired('activity:read'),
+  validate(
+    z.object({
+      from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+      to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional()
+    })
+  ),
+  async (req, res, next) => {
+    try {
+      const from = req.body.from
+        ? new Date(`${req.body.from}T00:00:00.000Z`)
+        : new Date(Date.now() - 7 * 86400000);
+      const to = req.body.to
+        ? new Date(`${req.body.to}T23:59:59.999Z`)
+        : new Date();
+
+      const payments = await prisma.payment.findMany({
+        where: { createdAt: { gte: from, lte: to }, status: 'PAID' }
+      });
+
+      const total = payments.length;
+      const mismatches: Array<{ paymentId: string; reason: string }> = [];
+
+      for (const payment of payments) {
+        if (!payment.externalRef) {
+          mismatches.push({ paymentId: payment.id, reason: 'Missing external reference' });
+          continue;
+        }
+        const events = await prisma.paymentEvent.count({
+          where: { paymentId: payment.id, eventType: 'charge.success' }
+        });
+        if (events === 0) {
+          mismatches.push({ paymentId: payment.id, reason: 'No charge.success event recorded' });
+        }
+      }
+
+      const matched = total - mismatches.length;
+
+      await prisma.auditLog.create({
+        data: {
+          actorId: req.auth!.userId,
+          actorRole: 'ops_admin',
+          action: 'RECONCILIATION_RUN',
+          message: `Reconciliation: ${matched}/${total} matched, ${mismatches.length} mismatches`,
+          metadata: { from: from.toISOString(), to: to.toISOString(), mismatches: mismatches.slice(0, 20) }
+        }
+      });
+
+      res.json({ matched, mismatches: mismatches.length, total, details: mismatches.slice(0, 50) });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+

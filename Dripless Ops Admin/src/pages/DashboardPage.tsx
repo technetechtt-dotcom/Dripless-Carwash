@@ -63,6 +63,7 @@ import { InboxSection } from './dashboard/sections/InboxSection';
 import { CommunicationsSection } from './dashboard/sections/CommunicationsSection';
 import { AuditSection } from './dashboard/sections/AuditSection';
 import { ReportsSection } from './dashboard/sections/ReportsSection';
+import { FinanceSection } from './dashboard/sections/FinanceSection';
 type DispatchLane = BookingStatus | 'UNASSIGNED' | 'DISPATCH_EXHAUSTED';
 type SlaAlertItem = {
   booking: BookingContract;
@@ -2132,6 +2133,10 @@ export const DashboardPage = ({ tabOverride }: DashboardPageProps) => {
             setActivityPage((prev) => Math.min(pageCount(filteredActivity), prev + 1))
           }
         />
+      ) : null}
+
+      {canAccessActiveTab && activeTab === 'finance' ? (
+        <FinanceSection analytics={analytics} bookings={sortedBookings} />
       ) : null}
 
       {canAccessActiveTab && activeTab === 'reports' ? (

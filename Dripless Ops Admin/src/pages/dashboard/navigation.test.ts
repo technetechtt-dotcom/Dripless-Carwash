@@ -16,6 +16,7 @@ const expectedPages = [
   'inbox',
   'communications',
   'specials',
+  'finance',
   'reports',
   'audit'
 ] as const;
