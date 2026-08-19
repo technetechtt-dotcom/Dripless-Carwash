@@ -5,7 +5,7 @@ import { authRequired, roleRequired } from '../middleware/auth.js';
 import { validate } from '../middleware/validate.js';
 import { HttpError } from '../middleware/error.js';
 import { fromCents, toCents } from '../money.js';
-import { creditWallet, mapLedgerDto } from './ledger.js';
+import { creditWalletWithApproval, mapLedgerDto } from './ledger.js';
 
 export const walletRouter = Router();
 
@@ -23,6 +23,10 @@ walletRouter.get('/', authRequired, roleRequired(['customer']), async (req, res,
     res.json({
       walletBalance: fromCents(profile.walletBalance),
       walletBalanceCents: profile.walletBalance,
+      withdrawableBalance: fromCents(profile.walletCashBalance),
+      withdrawableBalanceCents: profile.walletCashBalance,
+      promotionalBalance: fromCents(profile.walletPromoBalance),
+      promotionalBalanceCents: profile.walletPromoBalance,
       currency: 'ZAR',
       transactions: entries.map(mapLedgerDto)
     });
@@ -40,15 +44,20 @@ walletRouter.post(
       userId: z.string().min(1),
       amountZar: z.number().positive(),
       promo: z.boolean().optional(),
-      note: z.string().max(200).optional()
+      note: z.string().max(200).optional(),
+      idempotencyKey: z.string().min(8).max(100),
+      approvalId: z.string().min(1)
     })
   ),
   async (req, res, next) => {
     try {
-      const entry = await creditWallet({
+      const amountCents = toCents(req.body.amountZar);
+      const entry = await creditWalletWithApproval({
+        approvalId: req.body.approvalId,
         userId: req.body.userId,
-        amountCents: toCents(req.body.amountZar),
+        amountCents,
         type: req.body.promo ? 'PROMO_CREDIT' : 'CREDIT',
+        idempotencyKey: req.body.idempotencyKey,
         note: req.body.note
       });
       res.status(201).json(mapLedgerDto(entry));

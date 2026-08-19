@@ -5,6 +5,8 @@ import { authRequired } from '../middleware/auth.js';
 import { validate } from '../middleware/validate.js';
 import { HttpError } from '../middleware/error.js';
 import { enqueue } from '../lib/queue.js';
+import { createSignedDownload, readLocalObject } from '../evidence/storage.js';
+import { env } from '../config/env.js';
 
 export const privacyRouter = Router();
 
@@ -56,6 +58,41 @@ privacyRouter.post(
     }
   }
 );
+
+privacyRouter.get('/requests', authRequired, async (req, res, next) => {
+  try {
+    const rows = await prisma.dataRequest.findMany({
+      where: { userId: req.auth!.userId },
+      orderBy: { createdAt: 'desc' }
+    });
+    res.json(
+      rows.map(({ exportUrl, ...row }) => ({
+        ...row,
+        downloadPath: exportUrl ? `/privacy/requests/${row.id}/download` : null
+      }))
+    );
+  } catch (error) {
+    next(error);
+  }
+});
+
+privacyRouter.get('/requests/:requestId/download', authRequired, async (req, res, next) => {
+  try {
+    const request = await prisma.dataRequest.findFirst({
+      where: { id: String(req.params.requestId), userId: req.auth!.userId, status: 'COMPLETED' }
+    });
+    if (!request?.exportUrl) throw new HttpError(404, 'Completed export not found');
+    const signed = await createSignedDownload(request.exportUrl);
+    if (signed) return res.redirect(302, signed);
+    const local = readLocalObject(request.exportUrl);
+    if (!local) throw new HttpError(404, 'Export object not found');
+    res.setHeader('Cache-Control', 'private, no-store');
+    res.setHeader('Content-Disposition', 'attachment; filename="dripless-data-export.json"');
+    res.type('application/json').send(local);
+  } catch (error) {
+    next(error);
+  }
+});
 
 privacyRouter.get('/consents', authRequired, async (req, res, next) => {
   try {
@@ -110,9 +147,9 @@ privacyRouter.get('/inventory', authRequired, async (_req, res) => {
   res.json({
     categories: [
       { name: 'Identity', lawfulBasis: 'contract', retention: 'account-lifetime + 5 years' },
-      { name: 'Location', lawfulBasis: 'legitimate_interest', retention: '90 days live, 12 months history' },
-      { name: 'Evidence photos', lawfulBasis: 'contract', retention: '24 months' },
-      { name: 'Driver documents', lawfulBasis: 'legal_obligation', retention: 'employment + 5 years' },
+      { name: 'Location', lawfulBasis: 'legitimate_interest', retention: `${env.GPS_RETENTION_DAYS} days` },
+      { name: 'Evidence photos', lawfulBasis: 'contract', retention: `${env.EVIDENCE_RETENTION_DAYS} days` },
+      { name: 'Driver documents', lawfulBasis: 'legal_obligation', retention: `${env.DRIVER_DOCUMENT_RETENTION_DAYS} days after deactivation` },
       { name: 'Payments', lawfulBasis: 'legal_obligation', retention: '7 years' },
       { name: 'Marketing', lawfulBasis: 'consent', retention: 'until withdrawn' }
     ]

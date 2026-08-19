@@ -11,8 +11,10 @@ notificationsRouter.get('/', authRequired, async (req, res, next) => {
   try {
     const rows = await prisma.notification.findMany({
       where: {
-        OR: [{ userId: req.auth!.profileId }, { role: req.auth!.role }]
+        OR: [{ userId: req.auth!.userId }, { role: req.auth!.role }],
+        receipts: { none: { userId: req.auth!.userId, hiddenAt: { not: null } } }
       },
+      include: { receipts: { where: { userId: req.auth!.userId }, take: 1 } },
       orderBy: { createdAt: 'desc' },
       take: 100
     });
@@ -24,13 +26,67 @@ notificationsRouter.get('/', authRequired, async (req, res, next) => {
         title: row.title,
         message: row.message,
         type: row.type,
-        read: row.read,
+        read: Boolean(row.receipts[0]?.readAt || (row.userId === req.auth!.userId && row.read)),
         createdAt: row.createdAt.toISOString()
       }))
     );
   } catch (error) {
     next(error);
   }
+});
+
+notificationsRouter.patch('/:notificationId/read', authRequired, async (req, res, next) => {
+  try {
+    const notification = await prisma.notification.findFirst({
+      where: {
+        id: String(req.params.notificationId),
+        OR: [{ userId: req.auth!.userId }, { role: req.auth!.role }]
+      }
+    });
+    if (!notification) return res.status(404).json({ message: 'Notification not found' });
+    await prisma.notificationReceipt.upsert({
+      where: { notificationId_userId: { notificationId: notification.id, userId: req.auth!.userId } },
+      create: { notificationId: notification.id, userId: req.auth!.userId, readAt: new Date() },
+      update: { readAt: new Date(), hiddenAt: null }
+    });
+    res.status(204).send();
+  } catch (error) { next(error); }
+});
+
+notificationsRouter.post('/read-all', authRequired, async (req, res, next) => {
+  try {
+    const rows = await prisma.notification.findMany({
+      where: { OR: [{ userId: req.auth!.userId }, { role: req.auth!.role }] },
+      select: { id: true }
+    });
+    const now = new Date();
+    await prisma.$transaction(async (tx) => {
+      await tx.notificationReceipt.createMany({
+        data: rows.map((row) => ({ notificationId: row.id, userId: req.auth!.userId, readAt: now })),
+        skipDuplicates: true
+      });
+      await tx.notificationReceipt.updateMany({
+        where: { userId: req.auth!.userId, notificationId: { in: rows.map((row) => row.id) } },
+        data: { readAt: now }
+      });
+    });
+    res.status(204).send();
+  } catch (error) { next(error); }
+});
+
+notificationsRouter.delete('/:notificationId', authRequired, async (req, res, next) => {
+  try {
+    const notification = await prisma.notification.findFirst({
+      where: { id: String(req.params.notificationId), OR: [{ userId: req.auth!.userId }, { role: req.auth!.role }] }
+    });
+    if (!notification) return res.status(404).json({ message: 'Notification not found' });
+    await prisma.notificationReceipt.upsert({
+      where: { notificationId_userId: { notificationId: notification.id, userId: req.auth!.userId } },
+      create: { notificationId: notification.id, userId: req.auth!.userId, hiddenAt: new Date() },
+      update: { hiddenAt: new Date() }
+    });
+    res.status(204).send();
+  } catch (error) { next(error); }
 });
 
 notificationsRouter.post(

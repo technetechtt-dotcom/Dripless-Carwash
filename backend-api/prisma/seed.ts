@@ -63,7 +63,7 @@ async function main() {
 
   const demoPassword = await hashPassword('DemoPass123!');
 
-  await prisma.user.upsert({
+  const customerUser = await prisma.user.upsert({
     where: { email: 'customer@demo.dripless.local' },
     update: {},
     create: {
@@ -77,12 +77,29 @@ async function main() {
           name: 'Demo Customer',
           status: 'ACTIVE',
           walletBalance: 5000,
+          walletCashBalance: 5000,
           ecoPoints: 200,
           referralCode: 'DEMOCUST',
           popiaConsentAt: new Date(),
           marketingConsentAt: new Date()
         }
       }
+    }
+  });
+
+  await prisma.walletLedgerEntry.upsert({
+    where: { idempotencyKey: 'seed-customer-opening-balance' },
+    update: {},
+    create: {
+      userId: customerUser.id,
+      type: 'CREDIT',
+      amountCents: 5000,
+      balanceAfter: 5000,
+      cashBalanceAfter: 5000,
+      promoBalanceAfter: 0,
+      withdrawable: true,
+      idempotencyKey: 'seed-customer-opening-balance',
+      note: 'Demo opening balance'
     }
   });
 

@@ -32,10 +32,15 @@ export function useDriverStats(completedBookings: Booking[]) {
       reduce((sum, b) => sum + b.earnings, 0)
     };
 
+    const todayHours = todayJobs.reduce((sum, job) => {
+      const minutes = Number.parseFloat(job.duration);
+      return sum + (Number.isFinite(minutes) ? minutes / 60 : 0);
+    }, 0);
+
     return {
       todayEarnings,
       todayJobs: todayJobs.length,
-      todayHours: 5.2, // Mock data for now
+      todayHours,
       totalEarnings,
       totalJobs,
       breakdown

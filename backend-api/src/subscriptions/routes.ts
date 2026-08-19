@@ -8,6 +8,12 @@ import { fromCents } from '../money.js';
 
 export const subscriptionsRouter = Router();
 
+async function ownedSubscription(id: string, userId: string) {
+  const subscription = await prisma.subscription.findFirst({ where: { id, userId } });
+  if (!subscription) throw new HttpError(404, 'Subscription not found');
+  return subscription;
+}
+
 subscriptionsRouter.get('/plans', async (_req, res, next) => {
   try {
     const plans = await prisma.subscriptionPlan.findMany({ where: { active: true } });
@@ -20,6 +26,24 @@ subscriptionsRouter.get('/plans', async (_req, res, next) => {
   } catch (error) {
     next(error);
   }
+});
+
+subscriptionsRouter.get('/me', authRequired, roleRequired(['customer']), async (req, res, next) => {
+  try {
+    const rows = await prisma.subscription.findMany({
+      where: { userId: req.auth!.userId },
+      include: { plan: true },
+      orderBy: { createdAt: 'desc' }
+    });
+    res.json(rows.map((row) => ({
+      id: row.id,
+      status: row.status,
+      washesUsed: row.washesUsed,
+      currentPeriodStart: row.currentPeriodStart,
+      currentPeriodEnd: row.currentPeriodEnd,
+      plan: { ...row.plan, monthlyZar: fromCents(row.plan.monthlyCents) }
+    })));
+  } catch (error) { next(error); }
 });
 
 subscriptionsRouter.post(
@@ -56,8 +80,10 @@ subscriptionsRouter.post(
 
 subscriptionsRouter.post('/:id/pause', authRequired, async (req, res, next) => {
   try {
+    const current = await ownedSubscription(String(req.params.id), req.auth!.userId);
+    if (current.status !== 'ACTIVE') throw new HttpError(400, 'Only active subscriptions can be paused');
     const sub = await prisma.subscription.update({
-      where: { id: String(req.params.id) },
+      where: { id: current.id },
       data: { status: 'PAUSED', pausedAt: new Date() }
     });
     res.json(sub);
@@ -68,8 +94,10 @@ subscriptionsRouter.post('/:id/pause', authRequired, async (req, res, next) => {
 
 subscriptionsRouter.post('/:id/resume', authRequired, async (req, res, next) => {
   try {
+    const current = await ownedSubscription(String(req.params.id), req.auth!.userId);
+    if (current.status !== 'PAUSED') throw new HttpError(400, 'Only paused subscriptions can be resumed');
     const sub = await prisma.subscription.update({
-      where: { id: String(req.params.id) },
+      where: { id: current.id },
       data: { status: 'ACTIVE', pausedAt: null }
     });
     res.json(sub);
@@ -80,8 +108,10 @@ subscriptionsRouter.post('/:id/resume', authRequired, async (req, res, next) => 
 
 subscriptionsRouter.post('/:id/cancel', authRequired, async (req, res, next) => {
   try {
+    const current = await ownedSubscription(String(req.params.id), req.auth!.userId);
+    if (current.status === 'CANCELLED') return res.json(current);
     const sub = await prisma.subscription.update({
-      where: { id: String(req.params.id) },
+      where: { id: current.id },
       data: { status: 'CANCELLED', cancelledAt: new Date() }
     });
     res.json(sub);

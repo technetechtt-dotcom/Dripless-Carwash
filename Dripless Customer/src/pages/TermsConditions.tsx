@@ -56,7 +56,7 @@ const TermsConditions = () => {
     items: [
     'All bookings are subject to availability and confirmation.',
     'Prices are displayed in the local currency and include applicable taxes unless stated otherwise.',
-    'Payment must be made through approved methods: Card, Dripless Wallet, or Cash After Wash (CAW).',
+    'Payment must be made through approved methods: Paystack hosted card checkout or an eligible Dripless Wallet balance.',
     'Cancellations made less than 2 hours before the scheduled service may incur a cancellation fee.',
     'Refunds for cancelled services will be credited to your Dripless Wallet within 24 hours.']
 

@@ -1,10 +1,10 @@
 import { createApp } from './app.js';
-import { env } from './config/env.js';
+import { assertProductionConfiguration, env } from './config/env.js';
 import { prisma } from './db/prisma.js';
 import { hashPassword } from './auth/password.js';
 import { DEFAULT_OPS_PERMISSIONS } from './auth/permissions.js';
-import { registerJobHandlers } from './jobs/register.js';
-import { startJobWorker, enqueue } from './lib/queue.js';
+import { ensureScheduledJobs, registerJobHandlers } from './jobs/register.js';
+import { startJobWorker } from './lib/queue.js';
 import { logger } from './lib/logger.js';
 
 async function maybeBootstrapFromEnv() {
@@ -36,12 +36,13 @@ async function maybeBootstrapFromEnv() {
 }
 
 async function main() {
+  assertProductionConfiguration();
   await maybeBootstrapFromEnv();
-  registerJobHandlers();
-  startJobWorker();
-  await enqueue('payment.reconcile', {}, { runAt: new Date(Date.now() + 60_000) }).catch(() => undefined);
-  await enqueue('promo.expire', {}, { runAt: new Date(Date.now() + 120_000) }).catch(() => undefined);
-  await enqueue('documents.expiry', {}, { runAt: new Date(Date.now() + 180_000) }).catch(() => undefined);
+  if (env.PROCESS_ROLE === 'all') {
+    registerJobHandlers();
+    await ensureScheduledJobs();
+    startJobWorker();
+  }
   const app = createApp();
   app.listen(env.PORT, () => {
     logger.info('api_listening', { port: env.PORT, demoMode: env.demoMode, env: env.NODE_ENV });

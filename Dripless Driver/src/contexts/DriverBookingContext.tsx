@@ -1,21 +1,31 @@
 import React, {
   createContext,
+  useCallback,
   useContext,
   useEffect,
   useMemo,
   useState,
   type ReactNode
 } from 'react';
-import { bookingApi, notificationApi, trackingApi } from '@shared/api';
+import {
+  apiRuntimeConfig,
+  bookingApi,
+  bookingProofApi,
+  driverOperationsApi,
+  notificationApi,
+  subscribePlatformEvents,
+  trackingApi
+} from '@shared/api';
 import { interpolateGeoPoint, textToGeoPoint } from '@shared/maps';
 import { Booking, Job, JobStatus, PerformanceStats, Message } from '../types';
+import { normaliseGpsSample } from '../utils/gps';
 import { useDriverAuth } from './DriverAuthContext';
 import { useToast } from './ToastContext';
 import type { BookingContract } from '@shared/types';
 interface DriverBookingContextType {
   // Job State
   isOnline: boolean;
-  setIsOnline: (val: boolean) => void;
+  setIsOnline: (val: boolean) => Promise<void>;
   activeJob: Job | null;
   incomingJob: Job | null;
   jobToRate: Job | null;
@@ -80,7 +90,7 @@ export const DriverBookingProvider: React.FC<{
   const { driver } = useDriverAuth();
   const { showToast } = useToast();
   // App State
-  const [isOnline, setIsOnline] = useState(false);
+  const [isOnline, setOnlineState] = useState(false);
   const [activeJob, setActiveJob] = useState<Job | null>(null);
   const [incomingJob, setIncomingJob] = useState<Job | null>(null);
   const [jobToRate, setJobToRate] = useState<Job | null>(null);
@@ -101,36 +111,23 @@ export const DriverBookingProvider: React.FC<{
     };
   }, [activeJob, completedBookings.length, incomingJob]);
   // Chat State
-  const [messages, setMessages] = useState<Message[]>([
-  {
-    id: '1',
-    sender: 'customer',
-    text: "I'm waiting near the main entrance.",
-    timestamp: new Date(Date.now() - 1000 * 60 * 5).toISOString(),
-    read: false
-  }]
-  );
+  const [messages, setMessages] = useState<Message[]>([]);
+  const loadMessages = useCallback(async (bookingId: string) => {
+    const rows = await bookingProofApi.messages(bookingId);
+    setMessages(rows.map((row) => ({
+      id: String(row.id),
+      sender: row.senderRole === 'driver' ? 'driver' : 'customer',
+      text: String(row.body),
+      timestamp: String(row.createdAt),
+      read: row.senderRole === 'driver'
+    })));
+  }, []);
   const sendMessage = (text: string) => {
-    const newMessage: Message = {
-      id: Math.random().toString(36).substr(2, 9),
-      sender: 'driver',
-      text,
-      timestamp: new Date().toISOString(),
-      read: true
-    };
-    setMessages((prev) => [...prev, newMessage]);
-    // Simulate customer reply
-    setTimeout(() => {
-      const reply: Message = {
-        id: Math.random().toString(36).substr(2, 9),
-        sender: 'customer',
-        text: 'Okay, see you soon!',
-        timestamp: new Date().toISOString(),
-        read: false
-      };
-      setMessages((prev) => [...prev, reply]);
-      showToast('New message from customer', 'info');
-    }, 3000);
+    const body = text.trim();
+    if (!activeJob || !body) return;
+    void bookingProofApi.sendMessage(activeJob.id, body)
+      .then(() => loadMessages(activeJob.id))
+      .catch((error) => showToast(error instanceof Error ? error.message : 'Message could not be sent', 'error'));
   };
   const markMessagesRead = () => {
     setMessages((prev) =>
@@ -142,6 +139,16 @@ export const DriverBookingProvider: React.FC<{
   };
 
   useEffect(() => {
+    if (!activeJob) {
+      setMessages([]);
+      return;
+    }
+    void loadMessages(activeJob.id).catch((error) =>
+      showToast(error instanceof Error ? error.message : 'Messages could not be loaded', 'error')
+    );
+  }, [activeJob?.id, loadMessages]);
+
+  useEffect(() => {
     if (!driver?.id || !isOnline) {
       return;
     }
@@ -150,14 +157,18 @@ export const DriverBookingProvider: React.FC<{
       lat: number,
       lng: number,
       speedKph?: number | null,
-      heading?: number | null
+      heading?: number | null,
+      accuracyM?: number | null,
+      recordedAt?: string
     ) => {
       await trackingApi.updateDriverLocation({
         driverId: driver.id,
         lat,
         lng,
         speedKph: speedKph ?? null,
-        heading: heading ?? null
+        heading: heading ?? null,
+        accuracyM: accuracyM ?? null,
+        recordedAt
       });
     };
 
@@ -204,21 +215,29 @@ export const DriverBookingProvider: React.FC<{
     if (typeof navigator !== 'undefined' && navigator.geolocation) {
       watchId = navigator.geolocation.watchPosition(
         (position) => {
-          const speedMetersPerSecond = position.coords.speed;
-          const speedKph =
-            typeof speedMetersPerSecond === 'number' && Number.isFinite(speedMetersPerSecond) ?
-            speedMetersPerSecond * 3.6 :
-            null;
-          void publishPoint(
-            position.coords.latitude,
-            position.coords.longitude,
-            speedKph,
-            position.coords.heading
-          );
+          try {
+            const sample = normaliseGpsSample(position);
+            void publishPoint(
+              sample.lat,
+              sample.lng,
+              sample.speedKph,
+              sample.heading,
+              sample.accuracyM,
+              sample.recordedAt
+            );
+          } catch (cause) {
+            void driverOperationsApi.setOnline(false).catch(() => undefined);
+            setOnlineState(false);
+            showToast(cause instanceof Error ? cause.message : 'GPS sample was rejected', 'error');
+          }
         },
         () => {
-          if (intervalId === null) {
+          if (apiRuntimeConfig.isMockEnabled() && intervalId === null) {
             startFallbackInterval();
+          } else {
+            void driverOperationsApi.setOnline(false).catch(() => undefined);
+            setOnlineState(false);
+            showToast('GPS permission or signal was lost. You are offline.', 'error');
           }
         },
         {
@@ -227,8 +246,11 @@ export const DriverBookingProvider: React.FC<{
           timeout: 10000
         }
       );
-    } else {
+    } else if (apiRuntimeConfig.isMockEnabled()) {
       startFallbackInterval();
+    } else {
+      void driverOperationsApi.setOnline(false).catch(() => undefined);
+      setOnlineState(false);
     }
 
     return () => {
@@ -250,7 +272,7 @@ export const DriverBookingProvider: React.FC<{
       try {
         const booking = await bookingApi.createIncomingDriverJob(driver.id);
         if (cancelled) return;
-        if (booking.status === 'PENDING' && booking.driverId === driver.id) {
+        if (booking && ['PENDING', 'CONFIRMED'].includes(booking.status) && booking.driverId === driver.id) {
           setIncomingJob(mapContractToJob(booking));
         }
       } catch {
@@ -274,19 +296,23 @@ export const DriverBookingProvider: React.FC<{
     }
     if (!driver) return;
     const contract = await bookingApi.createIncomingDriverJob(driver.id);
+    if (!contract) {
+      showToast('No assigned jobs are waiting right now', 'info');
+      return;
+    }
     setIncomingJob(mapContractToJob(contract));
   };
   const acceptJob = async () => {
     if (incomingJob) {
-      await bookingApi.updateBookingStatus(incomingJob.id, 'EN_ROUTE', 'driver');
-      setActiveJob({ ...incomingJob, status: 'EN_ROUTE' });
+      const accepted = await driverOperationsApi.acceptJob(incomingJob.id);
+      setActiveJob(mapContractToJob(accepted));
       setIncomingJob(null);
       showToast('Job accepted! Navigation starting...', 'success');
     }
   };
   const declineJob = async () => {
     if (incomingJob) {
-      await bookingApi.updateBookingStatus(incomingJob.id, 'CANCELLED', 'driver');
+      await driverOperationsApi.declineJob(incomingJob.id, 'Driver unavailable for this offer');
     }
     setIncomingJob(null);
     showToast('Job declined', 'info');
@@ -362,6 +388,49 @@ export const DriverBookingProvider: React.FC<{
     }
     setAvailableBookings(nextBookings);
   };
+  const setIsOnline = async (next: boolean) => {
+    if (!driver) return;
+    if (!next) {
+      if (apiRuntimeConfig.isRemoteEnabled()) await driverOperationsApi.setOnline(false);
+      setOnlineState(false);
+      return;
+    }
+    if (apiRuntimeConfig.isRemoteEnabled()) {
+      if (!navigator.geolocation) throw new Error('GPS is not available on this device');
+      const position = await new Promise<GeolocationPosition>((resolve, reject) =>
+        navigator.geolocation.getCurrentPosition(resolve, reject, {
+          enableHighAccuracy: true,
+          maximumAge: 0,
+          timeout: 15000
+        })
+      );
+      const sample = normaliseGpsSample(position);
+      await trackingApi.updateDriverLocation({
+        driverId: driver.id,
+        ...sample
+      });
+      await driverOperationsApi.setOnline(true);
+    }
+    setOnlineState(true);
+  };
+
+  useEffect(() => {
+    if (!driver?.id || !apiRuntimeConfig.isRemoteEnabled()) return;
+    return subscribePlatformEvents((event) => {
+      const bookingId = String(event.payload.bookingId || '');
+      if (event.type === 'booking.assigned' && event.payload.driverId === driver.id) {
+        void bookingApi.createIncomingDriverJob(driver.id).then((booking) => {
+          if (booking) setIncomingJob(mapContractToJob(booking));
+        });
+      }
+      if (activeJob && bookingId === activeJob.id && event.type === 'booking.status') {
+        setActiveJob((current) => current ? { ...current, status: String(event.payload.status) as JobStatus } : null);
+      }
+      if (activeJob && bookingId === activeJob.id && event.type === 'booking.message') {
+        void loadMessages(activeJob.id);
+      }
+    });
+  }, [activeJob?.id, driver?.id, loadMessages]);
   return (
     <DriverBookingContext.Provider
       value={{

@@ -14,27 +14,45 @@ export const accessExpiresAt = () =>
 export const refreshExpiresAt = () =>
   new Date(Date.now() + env.REFRESH_TOKEN_TTL_DAYS * 24 * 60 * 60_000);
 
-export async function issueSessionTokens(userId: string) {
+export async function issueSessionTokens(
+  userId: string,
+  context?: {
+    ip?: string;
+    userAgent?: string;
+    deviceLabel?: string;
+    authMethod?: 'PASSWORD' | 'TOTP' | 'PASSKEY' | 'REFRESH';
+    mfaVerified?: boolean;
+  }
+) {
   const accessToken = generateOpaqueToken(32);
   const refreshToken = generateOpaqueToken(48);
   const accessTokenHash = hashToken(accessToken);
   const refreshTokenHash = hashToken(refreshToken);
   const accessExp = accessExpiresAt();
   const refreshExp = refreshExpiresAt();
+  const mfaVerifiedAt = context?.mfaVerified ? new Date() : null;
+  const authMethod = context?.authMethod || 'PASSWORD';
 
   await prisma.$transaction([
     prisma.session.create({
       data: {
         userId,
         accessTokenHash,
-        expiresAt: accessExp
+        expiresAt: accessExp,
+        ipAddress: context?.ip,
+        userAgent: context?.userAgent?.slice(0, 500),
+        deviceLabel: context?.deviceLabel || context?.userAgent?.slice(0, 120),
+        authMethod,
+        mfaVerifiedAt
       }
     }),
     prisma.refreshToken.create({
       data: {
         userId,
         tokenHash: refreshTokenHash,
-        expiresAt: refreshExp
+        expiresAt: refreshExp,
+        authMethod,
+        mfaVerifiedAt
       }
     })
   ]);
@@ -57,11 +75,19 @@ export async function rotateRefreshToken(rawRefreshToken: string) {
     return null;
   }
 
-  const next = await issueSessionTokens(existing.userId);
+  const claimed = await prisma.refreshToken.updateMany({
+    where: { id: existing.id, revokedAt: null, expiresAt: { gt: new Date() } },
+    data: { revokedAt: new Date() }
+  });
+  if (claimed.count !== 1) return null;
+
+  const next = await issueSessionTokens(existing.userId, {
+    authMethod: existing.authMethod as 'PASSWORD' | 'TOTP' | 'PASSKEY' | 'REFRESH',
+    mfaVerified: Boolean(existing.mfaVerifiedAt)
+  });
   await prisma.refreshToken.update({
     where: { id: existing.id },
     data: {
-      revokedAt: new Date(),
       replacedBy: hashToken(next.refreshToken)
     }
   });

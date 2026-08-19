@@ -119,11 +119,7 @@ const Login = () => {
               <button
                 type="button"
                 className="text-sm font-bold text-eco-600 dark:text-eco-400 hover:text-eco-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-eco-500 rounded"
-                onClick={() =>
-                  window.alert(
-                    'Password reset link will be sent to your registered email. Contact support if you need help.'
-                  )
-                }>
+                onClick={() => navigate(ROUTES.FORGOT_PASSWORD)}>
                 Forgot password?
               </button>
             </div>

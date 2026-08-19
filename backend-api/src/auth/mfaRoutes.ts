@@ -5,7 +5,7 @@ import { authRequired, roleRequired } from '../middleware/auth.js';
 import { authRateLimiter } from '../middleware/rateLimit.js';
 import { validate } from '../middleware/validate.js';
 import { HttpError } from '../middleware/error.js';
-import { hashToken, issueSessionTokens } from './tokens.js';
+import { hashToken, issueSessionTokens, revokeUserSessions } from './tokens.js';
 import {
   decryptSecret,
   encryptSecret,
@@ -18,7 +18,7 @@ import {
 
 export const mfaRouter = Router();
 
-/** Scaffold: prepare TOTP enrollment for ops admins (full UX deferred). */
+/** Prepare TOTP enrollment for an authenticated ops administrator. */
 mfaRouter.post(
   '/setup',
   authRequired,
@@ -26,7 +26,8 @@ mfaRouter.post(
   async (req, res, next) => {
     try {
       const user = await prisma.user.findFirst({
-        where: { opsProfile: { id: req.auth!.profileId } }
+        where: { opsProfile: { id: req.auth!.profileId } },
+        include: { opsProfile: true }
       });
       if (!user) throw new HttpError(404, 'User not found');
       const secret = generateTotpSecret();
@@ -57,7 +58,8 @@ mfaRouter.post(
   async (req, res, next) => {
     try {
       const user = await prisma.user.findFirst({
-        where: { opsProfile: { id: req.auth!.profileId } }
+        where: { opsProfile: { id: req.auth!.profileId } },
+        include: { opsProfile: true }
       });
       if (!user?.mfaSecretEnc) throw new HttpError(400, 'MFA setup not started');
       const secret = decryptSecret(user.mfaSecretEnc);
@@ -72,9 +74,27 @@ mfaRouter.post(
           mfaBackupCodesHash: backupCodes.map(hashBackupCode)
         }
       });
+      await revokeUserSessions(user.id);
+      const tokens = await issueSessionTokens(user.id, {
+        ip: req.ip,
+        userAgent: req.get('user-agent'),
+        authMethod: 'TOTP',
+        mfaVerified: true
+      });
       res.json({
         enabled: true,
         backupCodes,
+        session: {
+          tokens,
+          payload: {
+            userId: user.id,
+            role: user.role,
+            email: user.email,
+            emailVerified: Boolean(user.emailVerifiedAt),
+            mustChangePassword: user.mustChangePassword
+          }
+        },
+        profile: user.opsProfile ? { ...user.opsProfile, email: user.email } : null,
         message: 'MFA enabled. Store backup codes securely; they are shown once.'
       });
     } catch (error) {
@@ -117,6 +137,40 @@ mfaRouter.post(
 );
 
 mfaRouter.post(
+  '/backup-codes/regenerate',
+  authRequired,
+  roleRequired(['ops_admin']),
+  validate(z.object({ token: z.string().min(6).max(12) })),
+  async (req, res, next) => {
+    try {
+      const user = await prisma.user.findUnique({ where: { id: req.auth!.userId } });
+      if (!user?.mfaEnabled || !user.mfaSecretEnc) throw new HttpError(400, 'MFA is not enabled');
+      if (!verifyTotp(decryptSecret(user.mfaSecretEnc), req.body.token)) {
+        throw new HttpError(401, 'A current authenticator code is required');
+      }
+      const backupCodes = generateBackupCodes();
+      await prisma.$transaction([
+        prisma.user.update({
+          where: { id: user.id },
+          data: { mfaBackupCodesHash: backupCodes.map(hashBackupCode) }
+        }),
+        prisma.auditLog.create({
+          data: {
+            actorId: user.id,
+            actorRole: 'ops_admin',
+            action: 'MFA_BACKUP_CODES_REGENERATED',
+            targetId: user.id,
+            message: 'Ops administrator regenerated MFA backup codes'
+          }
+        })
+      ]);
+      res.setHeader('Cache-Control', 'no-store');
+      res.json({ backupCodes, message: 'Previous backup codes have been revoked.' });
+    } catch (error) { next(error); }
+  }
+);
+
+mfaRouter.post(
   '/challenge',
   authRateLimiter,
   validate(
@@ -141,21 +195,29 @@ mfaRouter.post(
       const totpOk = verifyTotp(secret, req.body.token);
       const backupOk = user.mfaBackupCodesHash.includes(hashBackupCode(req.body.token));
       if (!totpOk && !backupOk) throw new HttpError(401, 'Invalid MFA token');
-      if (backupOk) {
-        await prisma.user.update({
-          where: { id: user.id },
-          data: {
-            mfaBackupCodesHash: user.mfaBackupCodesHash.filter(
-              (row) => row !== hashBackupCode(req.body.token)
-            )
-          }
+      await prisma.$transaction(async (tx) => {
+        const claimed = await tx.mfaChallenge.updateMany({
+          where: { id: challenge.id, usedAt: null, expiresAt: { gt: new Date() } },
+          data: { usedAt: new Date() }
         });
-      }
-      await prisma.mfaChallenge.update({
-        where: { id: challenge.id },
-        data: { usedAt: new Date() }
+        if (claimed.count !== 1) throw new HttpError(401, 'Invalid MFA challenge');
+        if (backupOk) {
+          await tx.user.update({
+            where: { id: user.id },
+            data: {
+              mfaBackupCodesHash: user.mfaBackupCodesHash.filter(
+                (row) => row !== hashBackupCode(req.body.token)
+              )
+            }
+          });
+        }
       });
-      const tokens = await issueSessionTokens(user.id);
+      const tokens = await issueSessionTokens(user.id, {
+        ip: req.ip,
+        userAgent: req.get('user-agent'),
+        authMethod: 'TOTP',
+        mfaVerified: true
+      });
       const profile =
         user.role === 'customer'
           ? user.customerProfile
@@ -171,7 +233,7 @@ mfaRouter.post(
             refreshExpiresAt: tokens.refreshExpiresAt
           },
           payload: {
-            userId: (profile as { id?: string } | null)?.id || user.id,
+            userId: user.id,
             role: user.role,
             email: user.email,
             emailVerified: Boolean(user.emailVerifiedAt),
@@ -192,9 +254,9 @@ mfaRouter.get('/webauthn/status', authRequired, roleRequired(['ops_admin']), asy
       include: { webAuthnCredentials: true }
     });
     res.json({
-      implemented: false,
+      implemented: true,
       credentials: user?.webAuthnCredentials.length ?? 0,
-      message: 'WebAuthn registration/assertion endpoints planned; use TOTP for now.'
+      message: 'Passkey registration and user-verified authentication are available at /auth/passkeys.'
     });
   } catch (error) {
     next(error);

@@ -36,7 +36,7 @@ export function pointInPolygon(point: GeoPoint, geojson: unknown): boolean {
   return false;
 }
 
-export async function assertInServiceArea(point: GeoPoint | null, label?: string) {
+export async function assertInServiceArea(point: GeoPoint | null, label?: string, scheduledAt = new Date()) {
   const areas = await prisma.serviceArea.findMany({ where: { active: true } });
   if (!areas.length) return null;
   if (!point) throw new HttpError(400, 'Coordinates required for service-area validation');
@@ -46,6 +46,18 @@ export async function assertInServiceArea(point: GeoPoint | null, label?: string
   }
   if (match.weatherHold) {
     throw new HttpError(503, match.weatherReason || 'Service temporarily suspended due to weather');
+  }
+  const localTime = new Intl.DateTimeFormat('en-ZA', {
+    timeZone: 'Africa/Johannesburg',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false
+  }).format(scheduledAt);
+  if (localTime < match.operatingFrom || localTime > match.operatingTo) {
+    throw new HttpError(
+      400,
+      `Service area operates from ${match.operatingFrom} to ${match.operatingTo}`
+    );
   }
   return match;
 }
@@ -76,7 +88,7 @@ export async function reverseGeocode(lat: number, lng: number): Promise<string |
 
 export async function roadRoute(from: GeoPoint, to: GeoPoint) {
   const { env } = await import('../config/env.js');
-  if (env.GEOCODER_PROVIDER === 'mapbox' && env.MAPBOX_ACCESS_TOKEN) {
+  if (env.ROUTING_PROVIDER === 'mapbox' && env.MAPBOX_ACCESS_TOKEN) {
     const url = new URL(
       `https://api.mapbox.com/directions/v5/mapbox/driving/${from.lng},${from.lat};${to.lng},${to.lat}`
     );
@@ -95,6 +107,30 @@ export async function roadRoute(from: GeoPoint, to: GeoPoint) {
         };
       }
     }
+  }
+  if (env.ROUTING_PROVIDER === 'google' && env.GOOGLE_MAPS_API_KEY) {
+    const url = new URL('https://maps.googleapis.com/maps/api/directions/json');
+    url.searchParams.set('origin', `${from.lat},${from.lng}`);
+    url.searchParams.set('destination', `${to.lat},${to.lng}`);
+    url.searchParams.set('key', env.GOOGLE_MAPS_API_KEY);
+    url.searchParams.set('region', 'za');
+    url.searchParams.set('departure_time', 'now');
+    const response = await fetch(url);
+    if (response.ok) {
+      const body = (await response.json()) as {
+        routes?: Array<{ legs?: Array<{ distance?: { value?: number }; duration_in_traffic?: { value?: number }; duration?: { value?: number } }> }>;
+      };
+      const leg = body.routes?.[0]?.legs?.[0];
+      if (leg?.distance?.value != null) {
+        return {
+          distanceKm: Number((leg.distance.value / 1000).toFixed(2)),
+          etaMinutes: Math.max(1, Math.round(Number(leg.duration_in_traffic?.value || leg.duration?.value || 0) / 60))
+        };
+      }
+    }
+  }
+  if (env.isProduction) {
+    throw new HttpError(503, 'Routing provider unavailable');
   }
   const toRad = (d: number) => (d * Math.PI) / 180;
   const dLat = toRad(to.lat - from.lat);

@@ -14,6 +14,9 @@ import Splash from './pages/Splash';
 import Login from './pages/Login';
 import Signup from './pages/Signup';
 import Home from './pages/Home';
+import ForgotPassword from './pages/ForgotPassword';
+import ResetPassword from './pages/ResetPassword';
+import VerifyEmail from './pages/VerifyEmail';
 // Lazy loaded pages
 const Services = lazy(() => import('./pages/Services'));
 const BookRide = lazy(() => import('./pages/BookRide'));
@@ -40,6 +43,10 @@ const MyCars = lazy(() => import('./pages/MyCars'));
 const Vouchers = lazy(() => import('./pages/Vouchers'));
 const RateService = lazy(() => import('./pages/RateService'));
 const Referrals = lazy(() => import('./pages/Referrals'));
+const Security = lazy(() => import('./pages/Security'));
+const Receipts = lazy(() => import('./pages/Receipts'));
+const SavedAddresses = lazy(() => import('./pages/SavedAddresses'));
+const PaymentReturn = lazy(() => import('./pages/PaymentReturn'));
 const LoadingFallback = () =>
 <div className="h-screen w-full flex flex-col items-center justify-center bg-slate-50 dark:bg-slate-950">
     <Loader2Icon className="h-8 w-8 animate-spin text-eco-500 mb-2" />
@@ -60,6 +67,9 @@ export function App() {
                   <Route path="/" element={<Splash />} />
                   <Route path="/login" element={<Login />} />
                   <Route path="/signup" element={<Signup />} />
+                  <Route path="/forgot-password" element={<ForgotPassword />} />
+                  <Route path="/reset-password" element={<ResetPassword />} />
+                  <Route path="/verify-email" element={<VerifyEmail />} />
 
                   {/* Protected Routes */}
                   <Route element={<ProtectedRoute />}>
@@ -126,6 +136,10 @@ export function App() {
                       <Route path="/vouchers" element={<Vouchers />} />
                       <Route path="/rate-service" element={<RateService />} />
                       <Route path="/referrals" element={<Referrals />} />
+                      <Route path="/security" element={<Security />} />
+                      <Route path="/receipts" element={<Receipts />} />
+                      <Route path="/saved-addresses" element={<SavedAddresses />} />
+                      <Route path="/payment-return" element={<PaymentReturn />} />
                     </Route>
                   </Route>
                 </Routes>

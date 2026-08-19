@@ -1,5 +1,6 @@
 import type { NextFunction, Request, Response } from 'express';
 import { ZodError } from 'zod';
+import { captureException } from '../lib/monitoring.js';
 
 export class HttpError extends Error {
   status: number;
@@ -18,7 +19,7 @@ export const notFoundHandler = (_req: Request, res: Response) => {
 
 export const errorHandler = (
   error: unknown,
-  _req: Request,
+  req: Request,
   res: Response,
   _next: NextFunction
 ) => {
@@ -34,6 +35,6 @@ export const errorHandler = (
       details: error.details
     });
   }
-  console.error(error);
-  return res.status(500).json({ message: 'Internal server error' });
+  captureException(error, { requestId: req.requestId, method: req.method, path: req.path });
+  return res.status(500).json({ message: 'Internal server error', requestId: req.requestId });
 };

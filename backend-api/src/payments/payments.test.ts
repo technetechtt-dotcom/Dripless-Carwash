@@ -3,6 +3,14 @@ import request from 'supertest';
 import { createApp } from '../app.js';
 import { prisma } from '../db/prisma.js';
 import { createHmac } from 'node:crypto';
+import { applyWalletEntry, creditWallet, reconcileWallets } from '../wallet/ledger.js';
+import {
+  applyPaymentSuccess,
+  claimWebhookReceipt,
+  completeWebhookReceipt,
+  processRefund
+} from './service.js';
+import { verifyPaystackSignature } from './paystack.js';
 
 const app = createApp();
 
@@ -10,6 +18,8 @@ describe('payments webhooks and wallet ledger', () => {
   let accessToken = '';
   let bookingId = '';
   let userId = '';
+  let customerId = '';
+  let paymentId = '';
 
   beforeAll(async () => {
     await prisma.service.upsert({
@@ -34,9 +44,12 @@ describe('payments webhooks and wallet ledger', () => {
     await prisma.user.update({ where: { email }, data: { emailVerifiedAt: new Date() } });
     const customer = await prisma.customerProfile.findFirst({ where: { user: { email } } });
     userId = customer!.userId;
-    await prisma.customerProfile.update({
-      where: { id: customer!.id },
-      data: { walletBalance: 10_000 }
+    customerId = customer!.id;
+    await creditWallet({
+      userId,
+      amountCents: 10_000,
+      idempotencyKey: `opening_${userId}`,
+      note: 'test opening cash balance'
     });
     const booking = await request(app)
       .post('/bookings')
@@ -58,6 +71,7 @@ describe('payments webhooks and wallet ledger', () => {
     expect(intent.status).toBe(201);
     expect(intent.body.amountZar).toBe(15.99);
     expect(intent.body.amountCents).toBe(1599);
+    paymentId = intent.body.paymentId;
 
     const again = await request(app)
       .post('/payments/intent')
@@ -74,46 +88,74 @@ describe('payments webhooks and wallet ledger', () => {
       .post('/payments/webhooks/stub')
       .send({ paymentId: intent.body.paymentId });
     expect(replay.body.duplicate).toBe(true);
+    expect(await prisma.paymentEvent.count({ where: { paymentId, eventType: 'payment.success' } })).toBe(1);
+    expect((await prisma.booking.findUniqueOrThrow({ where: { id: bookingId } })).paymentStatus).toBe('PAID');
   });
 
-  it('rejects invalid Paystack signatures when a secret is configured', async () => {
-    process.env.PAYSTACK_SECRET_KEY = 'sk_test_unit';
-    const body = { event: 'charge.success', data: { id: 'evt_1', reference: 'missing', amount: 1599, currency: 'ZAR', status: 'success' } };
-    const bad = await request(app)
-      .post('/payments/webhooks/paystack')
-      .set('x-paystack-signature', 'deadbeef')
-      .send(body);
-    expect([401, 404]).toContain(bad.status);
-    const unique = {
-      event: 'charge.success',
-      data: {
-        id: `evt_${Date.now()}`,
-        reference: 'no-such-payment',
-        amount: 1599,
-        currency: 'ZAR',
-        status: 'success'
-      }
-    };
-    const hash = createHmac('sha512', 'sk_test_unit').update(JSON.stringify(unique)).digest('hex');
-    const signed = await request(app)
-      .post('/payments/webhooks/paystack')
-      .set('x-paystack-signature', hash)
-      .send(unique);
-    expect([401, 404]).toContain(signed.status);
-    delete process.env.PAYSTACK_SECRET_KEY;
+  it('verifies the exact Paystack bytes with a timing-safe signature', () => {
+    const secret = 'sk_test_unit';
+    const raw = Buffer.from('{"amount":1599,"currency":"ZAR"}');
+    const signature = createHmac('sha512', secret).update(raw).digest('hex');
+    expect(verifyPaystackSignature(raw, signature, secret)).toBe(true);
+    expect(verifyPaystackSignature(Buffer.from('{"currency":"ZAR","amount":1599}'), signature, secret)).toBe(false);
+    expect(verifyPaystackSignature(raw, 'deadbeef', secret)).toBe(false);
   });
 
-  it('credits and debits the wallet ledger without going negative', async () => {
-    const { creditWallet, debitWallet } = await import('../wallet/ledger.js');
+  it('rejects altered webhook replay payloads', async () => {
+    const eventId = `replay_${Date.now()}`;
+    const claim = await claimWebhookReceipt({
+      provider: 'stub', providerEventId: eventId, signatureValid: true, payload: { value: 1 }
+    });
+    await completeWebhookReceipt(claim.receiptId);
+    await expect(claimWebhookReceipt({
+      provider: 'stub', providerEventId: eventId, signatureValid: true, payload: { value: 2 }
+    })).rejects.toThrow('different payload');
+  });
+
+  it('rejects wrong amount and currency before recording a success event', async () => {
+    const eventId = `wrong_${Date.now()}`;
+    await expect(applyPaymentSuccess({
+      paymentId, providerEventId: eventId, payload: {}, amountCents: 1600, currency: 'ZAR'
+    })).rejects.toThrow('Amount mismatch');
+    expect(await prisma.paymentEvent.count({ where: { paymentId, providerEventId: eventId } })).toBe(0);
+  });
+
+  it('keeps wallet idempotency, component balances, and promo withdrawal rules intact', async () => {
+    const key = `promo_${Date.now()}`;
     const credit = await creditWallet({
       userId,
       amountCents: 500,
       type: 'PROMO_CREDIT',
+      idempotencyKey: key,
       note: 'test promo'
     });
-    expect(credit.balanceAfter).toBeGreaterThanOrEqual(500);
+    const duplicate = await creditWallet({ userId, amountCents: 500, type: 'PROMO_CREDIT', idempotencyKey: key });
+    expect(duplicate.id).toBe(credit.id);
+    expect(await prisma.walletLedgerEntry.count({ where: { idempotencyKey: key } })).toBe(1);
     await expect(
-      debitWallet({ userId, amountCents: 9_999_999, note: 'too much' })
-    ).rejects.toThrow();
+      prisma.$transaction((tx) => applyWalletEntry(tx, {
+        userId, amountCents: 10_500, type: 'PAYOUT', idempotencyKey: `withdraw_${Date.now()}`
+      }))
+    ).rejects.toThrow('withdrawable');
+    const reconciliation = await reconcileWallets();
+    expect(reconciliation.mismatches.some((row) => row.customerId === customerId)).toBe(false);
+  });
+
+  it('handles partial and full refunds without exceeding the captured payment', async () => {
+    const first = await processRefund({
+      paymentId, amountCents: 300, reason: 'partial test', idempotencyKey: `refund_a_${paymentId}`
+    });
+    const duplicate = await processRefund({
+      paymentId, amountCents: 300, reason: 'partial test', idempotencyKey: `refund_a_${paymentId}`
+    });
+    expect(duplicate?.id).toBe(first?.id);
+    expect((await prisma.payment.findUniqueOrThrow({ where: { id: paymentId } })).status).toBe('PARTIALLY_REFUNDED');
+    await processRefund({
+      paymentId, amountCents: 1299, reason: 'final test', idempotencyKey: `refund_b_${paymentId}`
+    });
+    expect((await prisma.payment.findUniqueOrThrow({ where: { id: paymentId } })).status).toBe('REFUNDED');
+    await expect(processRefund({
+      paymentId, amountCents: 1, reason: 'too much', idempotencyKey: `refund_c_${paymentId}`
+    })).rejects.toThrow();
   });
 });

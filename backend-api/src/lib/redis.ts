@@ -24,9 +24,24 @@ class MemoryRedis {
   }
 
   async setnx(key: string, value: string): Promise<number> {
+    await this.get(key);
     if (memory.has(key)) return 0;
     memory.set(key, { value, expiresAt: null });
     return 1;
+  }
+
+  async setNxEx(key: string, value: string, seconds: number): Promise<boolean> {
+    await this.get(key);
+    if (memory.has(key)) return false;
+    memory.set(key, { value, expiresAt: Date.now() + seconds * 1000 });
+    return true;
+  }
+
+  async deleteIfValue(key: string, value: string): Promise<boolean> {
+    const current = await this.get(key);
+    if (current !== value) return false;
+    memory.delete(key);
+    return true;
   }
 
   async del(key: string): Promise<number> {
@@ -36,6 +51,13 @@ class MemoryRedis {
   async incr(key: string): Promise<number> {
     const current = Number((await this.get(key)) || '0') + 1;
     await this.set(key, String(current));
+    return current;
+  }
+
+  async decr(key: string): Promise<number> {
+    const current = Math.max(0, Number((await this.get(key)) || '0') - 1);
+    const row = memory.get(key);
+    memory.set(key, { value: String(current), expiresAt: row?.expiresAt ?? null });
     return current;
   }
 
@@ -58,8 +80,6 @@ class MemoryRedis {
 type RedisLike = MemoryRedis;
 
 let client: RedisLike | null = null;
-let remote: { ping: () => Promise<string>; quit: () => Promise<void>; get: Function; set: Function; del: Function; incr: Function; expire: Function; setnx?: Function } | null = null;
-
 export function redisConfigured(): boolean {
   return Boolean(env.REDIS_URL);
 }
@@ -76,21 +96,32 @@ export async function getRedis(): Promise<RedisLike> {
           setnx: (key: string, value: string) => Promise<number>;
           del: (key: string) => Promise<number>;
           incr: (key: string) => Promise<number>;
+          decr: (key: string) => Promise<number>;
           expire: (key: string, seconds: number) => Promise<number>;
           ping: () => Promise<string>;
           quit: () => Promise<unknown>;
+          eval: (script: string, numberOfKeys: number, ...args: string[]) => Promise<number>;
         };
       };
       const io = new IORedis(env.REDIS_URL, { maxRetriesPerRequest: 2, lazyConnect: true });
       await io.connect();
-      remote = io as unknown as typeof remote;
       client = {
         get: (key) => io.get(key),
         set: (key, value, mode, ttl) =>
           mode === 'EX' && ttl ? io.set(key, value, 'EX', ttl) : io.set(key, value),
         setnx: (key, value) => io.setnx(key, value),
+        setNxEx: async (key, value, seconds) =>
+          (await io.set(key, value, 'EX', seconds, 'NX')) === 'OK',
+        deleteIfValue: async (key, value) =>
+          (await io.eval(
+            "if redis.call('get', KEYS[1]) == ARGV[1] then return redis.call('del', KEYS[1]) else return 0 end",
+            1,
+            key,
+            value
+          )) === 1,
         del: (key) => io.del(key),
         incr: (key) => io.incr(key),
+        decr: (key) => io.decr(key),
         expire: (key, seconds) => io.expire(key, seconds),
         ping: () => io.ping(),
         quit: () => io.quit().then(() => undefined)
@@ -98,11 +129,13 @@ export async function getRedis(): Promise<RedisLike> {
       logger.info('redis_connected');
       return client;
     } catch (error) {
+      if (env.isProduction) throw error;
       logger.warn('redis_unavailable_using_memory', {
         error: error instanceof Error ? error.message : String(error)
       });
     }
   }
+  if (env.isProduction) throw new Error('Redis is required in production');
   client = new MemoryRedis();
   return client;
 }

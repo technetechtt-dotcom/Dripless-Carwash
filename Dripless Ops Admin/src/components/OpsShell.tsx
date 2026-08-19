@@ -13,6 +13,9 @@ import {
   type OpsPreset
 } from '../pages/dashboard/navigation';
 import { OpsIcon } from './OpsIcon';
+import { passkeyApi } from '@shared/api';
+import { startRegistration } from '@simplewebauthn/browser';
+import type { PublicKeyCredentialCreationOptionsJSON } from '@simplewebauthn/browser';
 
 export type NavBadgeMap = Partial<
   Record<'dispatch' | 'incidents' | 'inbox' | 'unassigned' | 'critical', { count: number; tone: 'warning' | 'danger' }>
@@ -66,6 +69,7 @@ export function OpsShell({
   isRefreshing
 }: OpsShellProps) {
   const [navOpen, setNavOpen] = useState(false);
+  const [passkeyFeedback, setPasskeyFeedback] = useState('');
   const [collapsed, setCollapsed] = useState(() => {
     try {
       return localStorage.getItem(STORAGE_COLLAPSE) === '1';
@@ -104,6 +108,20 @@ export function OpsShell({
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, []);
+
+  const registerPasskey = async () => {
+    setPasskeyFeedback('Waiting for your authenticator…');
+    try {
+      const challenge = await passkeyApi.registrationOptions();
+      const response = await startRegistration({
+        optionsJSON: challenge.options as PublicKeyCredentialCreationOptionsJSON
+      });
+      await passkeyApi.verifyRegistration(challenge.challengeToken, response);
+      setPasskeyFeedback('Passkey added');
+    } catch (error) {
+      setPasskeyFeedback(error instanceof Error ? error.message : 'Passkey setup failed');
+    }
+  };
 
   return (
     <div className="container">
@@ -198,6 +216,10 @@ export function OpsShell({
               title="Collapse sidebar (Ctrl+B)">
               {collapsed ? 'Expand nav' : 'Collapse nav'}
             </button>
+            <button type="button" className="ghost" onClick={() => void registerPasskey()}>
+              Add passkey
+            </button>
+            {passkeyFeedback ? <span className="muted" role="status">{passkeyFeedback}</span> : null}
             <button type="button" className="danger" onClick={onLogout}>
               Log out
             </button>

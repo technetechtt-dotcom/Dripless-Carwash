@@ -1,5 +1,8 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { customerAccountApi } from '@shared/api';
+import { useAuth } from '../contexts/AuthContext';
+import { toast } from 'sonner';
 import {
   ArrowLeftIcon,
   UserIcon,
@@ -10,29 +13,71 @@ import {
 'lucide-react';
 const PersonalInformation = () => {
   const navigate = useNavigate();
+  const { user } = useAuth();
   const fileInputRef = React.useRef<HTMLInputElement>(null);
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
   const [formData, setFormData] = useState({
-    firstName: 'Alex',
-    lastName: 'Johnson',
-    email: 'alex.johnson@example.com',
-    phone: '+1 (555) 123-4567',
-    address: '123 Green Street',
-    city: 'Eco City',
-    zipCode: '12345',
-    country: 'United States'
+    firstName: '',
+    lastName: '',
+    email: user?.email || '',
+    phone: user?.phone || '',
+    address: '',
+    city: '',
+    zipCode: '',
+    country: 'South Africa'
   });
+  const [addressId, setAddressId] = useState<string | null>(null);
   const [isEditing, setIsEditing] = useState(false);
+  useEffect(() => {
+    void customerAccountApi.profile().then((profile) => {
+      const name = String(profile.name || '').trim().split(/\s+/);
+      const addresses = (profile.addresses || []) as Array<Record<string, unknown>>;
+      const address = addresses.find((item) => item.isDefault) || addresses[0];
+      setAddressId(address ? String(address.id) : null);
+      setFormData({
+        firstName: name.shift() || '',
+        lastName: name.join(' '),
+        email: String(profile.email || user?.email || ''),
+        phone: String(profile.phone || ''),
+        address: String(address?.line1 || ''),
+        city: String(address?.city || ''),
+        zipCode: String(address?.postalCode || ''),
+        country: 'South Africa'
+      });
+    }).catch((error) => toast.error(error instanceof Error ? error.message : 'Could not load profile'));
+  }, [user?.email]);
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setFormData({
       ...formData,
       [e.target.name]: e.target.value
     });
   };
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setIsEditing(false);
-    // In a real app, this would save to backend
+    try {
+      await customerAccountApi.updateProfile({
+        name: `${formData.firstName} ${formData.lastName}`.trim(),
+        phone: formData.phone
+      });
+      if (formData.address.trim()) {
+        const payload = {
+          label: 'Home',
+          line1: formData.address,
+          city: formData.city,
+          postalCode: formData.zipCode,
+          isDefault: true
+        };
+        if (addressId) await customerAccountApi.updateAddress(addressId, payload);
+        else {
+          const created = await customerAccountApi.createAddress(payload);
+          setAddressId(String(created.id));
+        }
+      }
+      setIsEditing(false);
+      toast.success('Profile updated');
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Could not update profile');
+    }
   };
   return (
     <div className="min-h-screen bg-gray-50">
@@ -133,7 +178,7 @@ const PersonalInformation = () => {
                   name="email"
                   value={formData.email}
                   onChange={handleChange}
-                  disabled={!isEditing}
+                  disabled
                   className="w-full p-3 border border-gray-300 rounded-lg pl-10 disabled:bg-gray-50 disabled:text-gray-600" />
 
                 <MailIcon

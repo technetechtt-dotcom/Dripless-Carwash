@@ -6,7 +6,12 @@ import {
   useState,
   type ReactNode
 } from 'react';
-import { authApi } from '@shared/api';
+import { authApi, mfaApi, passkeyApi } from '@shared/api';
+import { startAuthentication, startRegistration } from '@simplewebauthn/browser';
+import type {
+  PublicKeyCredentialCreationOptionsJSON,
+  PublicKeyCredentialRequestOptionsJSON
+} from '@simplewebauthn/browser';
 import type { OpsAdminProfile } from '@shared/types';
 
 interface OpsAuthContextType {
@@ -14,6 +19,10 @@ interface OpsAuthContextType {
   isLoading: boolean;
   isAuthenticated: boolean;
   login: (email: string, password: string, mfaCode?: string, mfaToken?: string) => Promise<void>;
+  loginWithPasskey: () => Promise<void>;
+  enrollTotp: (token: string) => Promise<string[]>;
+  enrollPasskey: () => Promise<void>;
+  finishMfaEnrollment: () => void;
   logout: () => Promise<void>;
 }
 
@@ -59,12 +68,47 @@ export const OpsAuthProvider = ({ children }: { children: ReactNode }) => {
     setAdmin(null);
   };
 
+  const loginWithPasskey = async () => {
+    setIsLoading(true);
+    try {
+      const challenge = await passkeyApi.authenticationOptions();
+      const response = await startAuthentication({
+        optionsJSON: challenge.options as PublicKeyCredentialRequestOptionsJSON
+      });
+      setAdmin(await passkeyApi.verifyAuthentication(challenge.challengeToken, response));
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const enrollTotp = async (token: string) => {
+    const result = await mfaApi.verifySetup(token);
+    return result.backupCodes;
+  };
+
+  const enrollPasskey = async () => {
+    const challenge = await passkeyApi.registrationOptions();
+    const response = await startRegistration({
+      optionsJSON: challenge.options as PublicKeyCredentialCreationOptionsJSON
+    });
+    const result = await passkeyApi.verifyRegistration(challenge.challengeToken, response);
+    setAdmin(result.profile);
+  };
+
+  const finishMfaEnrollment = () => {
+    setAdmin(authApi.getCurrentOpsAdminProfile());
+  };
+
   const value = useMemo(
     () => ({
       admin,
       isLoading,
       isAuthenticated: Boolean(admin),
       login,
+      loginWithPasskey,
+      enrollTotp,
+      enrollPasskey,
+      finishMfaEnrollment,
       logout
     }),
     [admin, isLoading]

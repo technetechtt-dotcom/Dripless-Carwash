@@ -2,6 +2,7 @@ import { prisma } from '../db/prisma.js';
 import { logger } from './logger.js';
 import { getRedis } from './redis.js';
 import type { Prisma } from '@prisma/client';
+import { sendOperationalAlert } from './monitoring.js';
 
 type JobHandler = (payload: Record<string, unknown>) => Promise<void>;
 
@@ -27,16 +28,28 @@ export async function enqueue(
   });
 }
 
+export async function enqueueUnique(
+  queue: string,
+  payload: Record<string, unknown>,
+  opts?: { runAt?: Date; maxAttempts?: number }
+) {
+  const existing = await prisma.backgroundJob.findFirst({
+    where: { queue, status: { in: ['PENDING', 'RUNNING', 'FAILED'] } },
+    orderBy: { runAt: 'asc' }
+  });
+  if (existing) return existing;
+  return enqueue(queue, payload, opts);
+}
+
 async function withLock<T>(key: string, fn: () => Promise<T>): Promise<T | null> {
   const redis = await getRedis();
-  const token = `${Date.now()}`;
-  const ok = await redis.setnx(`lock:${key}`, token);
+  const token = `${process.pid}:${Date.now()}:${Math.random()}`;
+  const ok = await redis.setNxEx(`lock:${key}`, token, 30);
   if (!ok) return null;
-  await redis.expire(`lock:${key}`, 30);
   try {
     return await fn();
   } finally {
-    await redis.del(`lock:${key}`);
+    await redis.deleteIfValue(`lock:${key}`, token);
   }
 }
 
@@ -77,6 +90,12 @@ export async function processDueJobs(limit = 10) {
           }
         });
         logger.error('job_failed', { queue: job.queue, id: job.id, message, dead });
+        if (dead) {
+          await sendOperationalAlert('dead_job', `Job ${job.queue} exhausted retries`, {
+            jobId: job.id,
+            message
+          }).catch(() => undefined);
+        }
       }
     }
     return due.length;
@@ -86,9 +105,13 @@ export async function processDueJobs(limit = 10) {
 export function startJobWorker() {
   if (workerStarted) return;
   workerStarted = true;
-  setInterval(() => {
+  const timer = setInterval(() => {
     processDueJobs().catch((error) => logger.error('job_worker_tick_failed', { error: String(error) }));
   }, 5000);
+  return () => {
+    clearInterval(timer);
+    workerStarted = false;
+  };
 }
 
 export async function jobStats() {

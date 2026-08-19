@@ -1,146 +1,44 @@
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
+import { CreditCard, RefreshCw } from 'lucide-react';
+import { driverOperationsApi } from '@shared/api';
 import { EarningsChart } from '../components/EarningsChart';
 import { PageContainer } from '../components/ui/PageContainer';
 import { GlassCard } from '../components/ui/GlassCard';
 import { SectionHeader } from '../components/ui/SectionHeader';
-import { useDriverBookings } from '../contexts/DriverBookingContext';
-import { useDriverStats } from '../hooks/useDriverStats';
+import { useToast } from '../contexts/ToastContext';
+
+type Earning = { id: string; netZar: number; amountZar: number; feeZar: number; bookingId: string; createdAt: string };
+type Payout = { id: string; amountZar: number; status: string; createdAt: string; periodStart: string; periodEnd: string };
+type Summary = { availableZar: number; earnings: Earning[]; payouts: Payout[] };
+type Account = { bankCode: string; accountLast4: string; accountName: string; status: string };
+
 export function EarningsPage() {
-  const [period, setPeriod] = useState<'DAY' | 'WEEK' | 'MONTH'>('WEEK');
-  const { completedBookings } = useDriverBookings();
-  const stats = useDriverStats(completedBookings);
-  // Mock chart data (in a real app, this would come from useDriverStats too)
-  const chartData = [
-  {
-    name: 'Mon',
-    amount: 120
-  },
-  {
-    name: 'Tue',
-    amount: 150
-  },
-  {
-    name: 'Wed',
-    amount: 180
-  },
-  {
-    name: 'Thu',
-    amount: 90
-  },
-  {
-    name: 'Fri',
-    amount: 210
-  },
-  {
-    name: 'Sat',
-    amount: 250
-  },
-  {
-    name: 'Sun',
-    amount: 142
-  }];
-
-  return (
-    <PageContainer withOrbs>
-      <SectionHeader title="Earnings" />
-
-      {/* Period Toggle */}
-      <div className="flex bg-white/60 dark:bg-slate-800/60 border border-slate-200/50 dark:border-slate-700/50 p-1 rounded-xl mb-8 shadow-sm">
-        {['DAY', 'WEEK', 'MONTH'].map((p) =>
-        <button
-          key={p}
-          onClick={() => setPeriod(p as any)}
-          className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all ${period === p ? 'bg-emerald-500 text-white shadow-md' : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-white/50 dark:hover:bg-slate-700/50'}`}>
-
-            {p === 'DAY' ? 'TODAY' : p === 'WEEK' ? 'THIS WEEK' : 'THIS MONTH'}
-          </button>
-        )}
-      </div>
-
-      {/* Main Earnings Display */}
-      <div className="text-center mb-8">
-        <p className="text-slate-500 dark:text-slate-400 text-sm mb-1">
-          Total Earnings
-        </p>
-        <h2 className="text-5xl font-bold text-slate-900 dark:text-white tracking-tight">
-          ${(1142 + stats.totalEarnings).toFixed(2)}
-        </h2>
-      </div>
-
-      {/* Chart */}
-      <GlassCard className="p-4 mb-8">
-        <EarningsChart data={chartData} />
-      </GlassCard>
-
-      {/* Breakdown */}
-      <div className="space-y-6">
-        <SectionHeader title="Breakdown" />
-
-        <div className="space-y-4">
-          <div className="space-y-2">
-            <div className="flex justify-between text-sm">
-              <span className="text-slate-600 dark:text-slate-400">Rides</span>
-              <span className="text-slate-900 dark:text-white font-medium">
-                ${(640 + stats.breakdown.RIDE).toFixed(2)}
-              </span>
-            </div>
-            <div className="h-2 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
-              <div className="h-full bg-blue-500 w-[60%]" />
-            </div>
-          </div>
-
-          <div className="space-y-2">
-            <div className="flex justify-between text-sm">
-              <span className="text-slate-600 dark:text-slate-400">
-                Car Washes
-              </span>
-              <span className="text-slate-900 dark:text-white font-medium">
-                ${(320 + stats.breakdown.WASH).toFixed(2)}
-              </span>
-            </div>
-            <div className="h-2 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
-              <div className="h-full bg-cyan-500 w-[30%]" />
-            </div>
-          </div>
-
-          <div className="space-y-2">
-            <div className="flex justify-between text-sm">
-              <span className="text-slate-600 dark:text-slate-400">
-                Parcels
-              </span>
-              <span className="text-slate-900 dark:text-white font-medium">
-                ${(182 + stats.breakdown.PARCEL).toFixed(2)}
-              </span>
-            </div>
-            <div className="h-2 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
-              <div className="h-full bg-amber-500 w-[10%]" />
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Recent Payouts */}
-      <div className="mt-8 space-y-4">
-        <SectionHeader title="Recent Payouts" />
-        <GlassCard className="p-4 flex justify-between items-center">
-          <div>
-            <p className="text-slate-900 dark:text-white font-medium">
-              Weekly Payout
-            </p>
-            <p className="text-slate-500 dark:text-slate-400 text-xs">
-              Feb 12, 2024
-            </p>
-          </div>
-          <div className="text-right">
-            <p className="text-emerald-600 dark:text-emerald-400 font-bold">
-              +$850.25
-            </p>
-            <p className="text-slate-500 dark:text-slate-400 text-xs">
-              Deposited
-            </p>
-          </div>
-        </GlassCard>
-      </div>
-    </PageContainer>);
-
+  const { showToast } = useToast();
+  const [summary, setSummary] = useState<Summary>({ availableZar: 0, earnings: [], payouts: [] });
+  const [account, setAccount] = useState<Account | null>(null);
+  const [showAccount, setShowAccount] = useState(false);
+  const [form, setForm] = useState({ bankCode: '', accountNumber: '', accountName: '' });
+  const load = async () => {
+    const [nextSummary, nextAccount] = await Promise.all([driverOperationsApi.payoutSummary(), driverOperationsApi.payoutAccount()]);
+    setSummary(nextSummary as unknown as Summary); setAccount(nextAccount as unknown as Account | null);
+  };
+  useEffect(() => { void load().catch((e) => showToast(e instanceof Error ? e.message : 'Could not load earnings', 'error')); }, []);
+  const chartData = useMemo(() => {
+    const days = Array.from({ length: 7 }, (_, index) => { const date = new Date(); date.setDate(date.getDate() - (6 - index)); return { key: date.toISOString().slice(0, 10), name: date.toLocaleDateString(undefined, { weekday: 'short' }), amount: 0 }; });
+    for (const earning of summary.earnings) { const bucket = days.find((day) => day.key === earning.createdAt.slice(0, 10)); if (bucket) bucket.amount += earning.netZar; }
+    return days;
+  }, [summary.earnings]);
+  const submitAccount = async (event: React.FormEvent) => {
+    event.preventDefault();
+    try { await driverOperationsApi.updatePayoutAccount(form); await load(); setShowAccount(false); setForm({ bankCode: '', accountNumber: '', accountName: '' }); showToast('Payout account verified', 'success'); }
+    catch (error) { showToast(error instanceof Error ? error.message : 'Could not verify payout account', 'error'); }
+  };
+  return <PageContainer withOrbs>
+    <div className="flex items-center justify-between"><SectionHeader title="Earnings"/><button onClick={() => void load()} aria-label="Refresh earnings"><RefreshCw size={18} className="text-slate-500"/></button></div>
+    <div className="text-center mb-7"><p className="text-sm text-slate-500">Available for next approved payout</p><h2 className="text-5xl font-bold text-slate-900 dark:text-white">R{summary.availableZar.toFixed(2)}</h2></div>
+    <GlassCard className="p-4 mb-7"><EarningsChart data={chartData}/></GlassCard>
+    <GlassCard className="p-5 mb-7"><div className="flex items-center justify-between"><div><h2 className="font-bold dark:text-white">Payout account</h2><p className="text-xs text-slate-500">{account ? `${account.accountName} · •••• ${account.accountLast4} · ${account.status}` : 'No verified bank account'}</p></div><button onClick={() => setShowAccount((value) => !value)} className="text-sm text-emerald-600 font-bold"><CreditCard size={17} className="inline mr-1"/>{account ? 'Change' : 'Add'}</button></div>{showAccount && <form onSubmit={submitAccount} className="space-y-3 mt-4"><input required value={form.bankCode} onChange={(e) => setForm({ ...form, bankCode: e.target.value })} placeholder="Paystack bank code" className="w-full p-3 rounded-xl border dark:bg-slate-800 dark:text-white"/><input required inputMode="numeric" pattern="[0-9]{6,20}" value={form.accountNumber} onChange={(e) => setForm({ ...form, accountNumber: e.target.value.replace(/\D/g, '') })} placeholder="Account number" className="w-full p-3 rounded-xl border dark:bg-slate-800 dark:text-white"/><input required value={form.accountName} onChange={(e) => setForm({ ...form, accountName: e.target.value })} placeholder="Account holder" className="w-full p-3 rounded-xl border dark:bg-slate-800 dark:text-white"/><button className="w-full py-3 bg-emerald-500 text-white rounded-xl font-bold">Verify and save</button></form>}</GlassCard>
+    <SectionHeader title="Recent earnings"/><div className="space-y-3 mb-7">{summary.earnings.length === 0 ? <p className="text-sm text-slate-500">Completed-job earnings will appear here.</p> : summary.earnings.slice(0, 20).map((row) => <GlassCard key={row.id} className="p-4 flex justify-between"><div><p className="font-medium dark:text-white">Job {row.bookingId.slice(-8)}</p><p className="text-xs text-slate-500">{new Date(row.createdAt).toLocaleString()} · fee R{row.feeZar.toFixed(2)}</p></div><p className="font-bold text-emerald-600">R{row.netZar.toFixed(2)}</p></GlassCard>)}</div>
+    <SectionHeader title="Payout history"/><div className="space-y-3">{summary.payouts.length === 0 ? <p className="text-sm text-slate-500">No payouts yet.</p> : summary.payouts.map((row) => <GlassCard key={row.id} className="p-4 flex justify-between"><div><p className="font-medium dark:text-white">Payout</p><p className="text-xs text-slate-500">{new Date(row.createdAt).toLocaleDateString()} · {row.status}</p></div><p className="font-bold dark:text-white">R{row.amountZar.toFixed(2)}</p></GlassCard>)}</div>
+  </PageContainer>;
 }

@@ -1,0 +1,36 @@
+name: Roll Back Deployment
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Environment to roll back
+        type: choice
+        required: true
+        options: [staging, production]
+      image_digest:
+        description: Previously attested sha256 image digest
+        type: string
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  rollback:
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    steps:
+      - name: Validate immutable digest
+        shell: bash
+        run: '[[ "${{ inputs.image_digest }}" =~ ^sha256:[a-f0-9]{64}$ ]]'
+      - name: Trigger rollback
+        env:
+          DEPLOY_WEBHOOK_URL: ${{ secrets.DEPLOY_WEBHOOK_URL }}
+          IMAGE: ghcr.io/technetechtt-dotcom/dripless-carwash/api@${{ inputs.image_digest }}
+        run: |
+          test -n "$DEPLOY_WEBHOOK_URL"
+          curl --fail-with-body --silent --show-error \
+            -H 'Content-Type: application/json' \
+            --data "{\"environment\":\"${{ inputs.environment }}\",\"image\":\"${IMAGE}\",\"rollback\":true}" \
+            "$DEPLOY_WEBHOOK_URL"

@@ -6,6 +6,8 @@
 2. Keep at least 14 days of backup retention for production.
 3. Quarterly, restore a backup into a throwaway database and run `npx prisma migrate status` plus `npm --prefix backend-api run test`.
 
+The scheduled `Production Database Backup` workflow writes a PostgreSQL custom-format dump and SHA-256 manifest to an S3 URI using KMS server-side encryption. Configure lifecycle retention and object lock on that bucket independently of the application evidence bucket.
+
 ## Restore procedure
 
 ```bash
@@ -17,3 +19,5 @@ DATABASE_URL="$RESTORE_DATABASE_URL" npm run test
 ```
 
 Document the restore time, who performed it, and any data gaps. After a production incident restore, rotate credentials and invalidate sessions (`POST /auth/logout-all` per user or revoke all `Session` rows).
+
+The `Non-production Restore Drill` workflow implements the same procedure for an isolated drill database. It intentionally refuses a target URL that does not contain `restore` or `drill`.

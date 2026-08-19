@@ -129,7 +129,18 @@ bookingsRouter.post(
         label: req.body.destinationLocation
       });
 
-      const area = await assertInServiceArea(pickup, req.body.pickupLocation);
+      const scheduledAtInput =
+        req.body.scheduledAt ||
+        (req.body.scheduledDate && req.body.scheduledTime
+          ? `${req.body.scheduledDate}T${req.body.scheduledTime}`
+          : null);
+      const scheduledAt = scheduledAtInput ? new Date(scheduledAtInput) : new Date();
+      if (Number.isNaN(scheduledAt.getTime())) throw new HttpError(400, 'Invalid scheduled time');
+      if (scheduledAt < new Date(Date.now() - 60_000)) {
+        throw new HttpError(400, 'Booking time cannot be in the past');
+      }
+
+      const area = await assertInServiceArea(pickup, req.body.pickupLocation, scheduledAt);
       let routeDistanceKm: number | undefined;
       let routeEtaMinutes: number | undefined;
       if (pickup && destination) {
@@ -137,12 +148,6 @@ bookingsRouter.post(
         routeDistanceKm = route.distanceKm;
         routeEtaMinutes = route.etaMinutes;
       }
-
-      const scheduledAt =
-        req.body.scheduledAt ||
-        (req.body.scheduledDate && req.body.scheduledTime
-          ? `${req.body.scheduledDate}T${req.body.scheduledTime}`
-          : null);
 
       const booking = await prisma.$transaction(async (tx) => {
         const created = await tx.booking.create({
@@ -176,7 +181,7 @@ bookingsRouter.post(
             addOnSlugs: req.body.addOnSlugs || [],
             conditionNotes: req.body.conditionNotes,
             accessInstructions: req.body.accessInstructions,
-            scheduledAt: scheduledAt ? new Date(scheduledAt) : null
+            scheduledAt
           }
         });
         await tx.bookingStatusHistory.create({
@@ -245,7 +250,10 @@ bookingsRouter.get('/:bookingId/tracking', authRequired, async (req, res, next) 
     const driver = booking.driverId
       ? await prisma.driverProfile.findUnique({
           where: { id: booking.driverId },
-          include: { location: true }
+          include: {
+            location: true,
+            _count: { select: { bookings: { where: { status: 'COMPLETED' } } } }
+          }
         })
       : null;
 
@@ -265,6 +273,12 @@ bookingsRouter.get('/:bookingId/tracking', authRequired, async (req, res, next) 
           : null,
       driverId: booking.driverId ?? undefined,
       driverName: driver?.name,
+      driverPhone: driver?.phone,
+      driverVehicle: driver?.vehicle,
+      driverPlateNumber: driver?.plateNumber,
+      driverRating: driver?.rating,
+      driverAvatarUrl: driver?.avatarUrl,
+      driverCompletedJobs: driver?._count.bookings ?? 0,
       driverLocation: driver?.location
         ? {
             lat: driver.location.lat,
@@ -399,9 +413,13 @@ bookingsRouter.patch(
           : undefined);
 
       const updated = await prisma.$transaction(async (tx) => {
-        const row = await tx.booking.update({
+        const changed = await tx.booking.updateMany({
+          where: { id: booking.id, status: booking.status },
+          data: { status: nextStatus }
+        });
+        if (changed.count !== 1) throw new HttpError(409, 'Booking changed; refresh and retry');
+        const row = await tx.booking.findUniqueOrThrow({
           where: { id: booking.id },
-          data: { status: nextStatus },
           include: { customer: true }
         });
         await tx.bookingStatusHistory.create({
@@ -449,6 +467,166 @@ bookingsRouter.get('/:bookingId/policy', authRequired, async (req, res, next) =>
   }
 });
 
+bookingsRouter.get('/:bookingId/checklist', authRequired, async (req, res, next) => {
+  try {
+    const booking = await prisma.booking.findUnique({ where: { id: String(req.params.bookingId) } });
+    if (!booking) throw new HttpError(404, 'Booking not found');
+    if (req.auth!.role === 'customer' && booking.customerId !== req.auth!.profileId) throw new HttpError(403, 'Forbidden');
+    if (req.auth!.role === 'driver' && booking.driverId !== req.auth!.profileId) throw new HttpError(403, 'Forbidden');
+    res.json(await prisma.washChecklist.findUnique({ where: { bookingId: booking.id } }));
+  } catch (error) {
+    next(error);
+  }
+});
+
+bookingsRouter.patch(
+  '/:bookingId/checklist',
+  authRequired,
+  roleRequired(['driver', 'ops_admin']),
+  validate(
+    z.object({
+      exteriorDone: z.boolean().optional(),
+      interiorDone: z.boolean().optional(),
+      wheelsDone: z.boolean().optional(),
+      glassDone: z.boolean().optional(),
+      matsDone: z.boolean().optional(),
+      finalInspected: z.boolean().optional(),
+      rewashRequested: z.boolean().optional(),
+      damageAck: z.boolean().optional(),
+      notes: z.string().max(2000).nullable().optional()
+    }).strict()
+  ),
+  async (req, res, next) => {
+    try {
+      const booking = await prisma.booking.findUnique({ where: { id: String(req.params.bookingId) } });
+      if (!booking) throw new HttpError(404, 'Booking not found');
+      if (req.auth!.role === 'driver' && booking.driverId !== req.auth!.profileId) throw new HttpError(403, 'Forbidden');
+      if (['COMPLETED', 'CANCELLED'].includes(booking.status)) throw new HttpError(409, 'Checklist is locked');
+      const row = await prisma.washChecklist.upsert({
+        where: { bookingId: booking.id },
+        update: req.body,
+        create: { bookingId: booking.id, ...req.body }
+      });
+      res.json(row);
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+bookingsRouter.post(
+  '/:bookingId/consumables',
+  authRequired,
+  roleRequired(['driver']),
+  validate(
+    z.object({
+      items: z.array(z.object({ sku: z.string().min(1).max(80), quantity: z.number().int().positive() })).min(1).max(30)
+    })
+  ),
+  async (req, res, next) => {
+    try {
+      const booking = await prisma.booking.findUnique({ where: { id: String(req.params.bookingId) } });
+      if (!booking || booking.driverId !== req.auth!.profileId) throw new HttpError(403, 'Forbidden');
+      const rows = await prisma.$transaction(async (tx) => {
+        const created = [];
+        for (const item of req.body.items as Array<{ sku: string; quantity: number }>) {
+          const stock = await tx.driverConsumable.findUnique({
+            where: { driverId_sku: { driverId: req.auth!.profileId, sku: item.sku } }
+          });
+          if (!stock || stock.quantity < item.quantity) throw new HttpError(400, `Insufficient stock for ${item.sku}`);
+          await tx.driverConsumable.update({
+            where: { id: stock.id },
+            data: { quantity: { decrement: item.quantity } }
+          });
+          created.push(
+            await tx.consumableUsage.create({
+              data: { bookingId: booking.id, sku: stock.sku, name: stock.name, quantity: item.quantity }
+            })
+          );
+        }
+        return created;
+      }, { isolationLevel: 'Serializable' });
+      res.status(201).json(rows);
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+bookingsRouter.get('/:bookingId/messages', authRequired, async (req, res, next) => {
+  try {
+    const booking = await prisma.booking.findUnique({ where: { id: String(req.params.bookingId) } });
+    if (!booking) throw new HttpError(404, 'Booking not found');
+    if (req.auth!.role === 'customer' && booking.customerId !== req.auth!.profileId) throw new HttpError(403, 'Forbidden');
+    if (req.auth!.role === 'driver' && booking.driverId !== req.auth!.profileId) throw new HttpError(403, 'Forbidden');
+    const rows = await prisma.bookingMessage.findMany({ where: { bookingId: booking.id }, orderBy: { createdAt: 'asc' } });
+    res.json(rows);
+  } catch (error) {
+    next(error);
+  }
+});
+
+bookingsRouter.post(
+  '/:bookingId/messages',
+  authRequired,
+  validate(z.object({ body: z.string().trim().min(1).max(2000) }).strict()),
+  async (req, res, next) => {
+    try {
+      const booking = await prisma.booking.findUnique({ where: { id: String(req.params.bookingId) } });
+      if (!booking) throw new HttpError(404, 'Booking not found');
+      if (req.auth!.role === 'customer' && booking.customerId !== req.auth!.profileId) throw new HttpError(403, 'Forbidden');
+      if (req.auth!.role === 'driver' && booking.driverId !== req.auth!.profileId) throw new HttpError(403, 'Forbidden');
+      const row = await prisma.bookingMessage.create({
+        data: {
+          bookingId: booking.id,
+          senderId: req.auth!.profileId,
+          senderRole: req.auth!.role,
+          body: req.body.body
+        }
+      });
+      publishEvent('booking.message', { bookingId: booking.id, messageId: row.id, senderRole: row.senderRole });
+      res.status(201).json(row);
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+bookingsRouter.post(
+  '/:bookingId/rating',
+  authRequired,
+  roleRequired(['customer']),
+  validate(z.object({ stars: z.number().int().min(1).max(5), comment: z.string().max(2000).optional() }).strict()),
+  async (req, res, next) => {
+    try {
+      const booking = await prisma.booking.findUnique({ where: { id: String(req.params.bookingId) } });
+      if (!booking || booking.customerId !== req.auth!.profileId) throw new HttpError(403, 'Forbidden');
+      if (booking.status !== 'COMPLETED') throw new HttpError(400, 'Only completed bookings can be rated');
+      const row = await prisma.rating.upsert({
+        where: { bookingId_customerId: { bookingId: booking.id, customerId: req.auth!.profileId } },
+        update: { stars: req.body.stars, comment: req.body.comment },
+        create: {
+          bookingId: booking.id,
+          customerId: req.auth!.profileId,
+          driverId: booking.driverId,
+          stars: req.body.stars,
+          comment: req.body.comment
+        }
+      });
+      if (booking.driverId) {
+        const aggregate = await prisma.rating.aggregate({ where: { driverId: booking.driverId }, _avg: { stars: true } });
+        await prisma.driverProfile.update({
+          where: { id: booking.driverId },
+          data: { rating: aggregate._avg.stars || 5 }
+        });
+      }
+      res.status(201).json(row);
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
 bookingsRouter.post(
   '/:bookingId/cancel',
   authRequired,
@@ -464,15 +642,41 @@ bookingsRouter.post(
         throw new HttpError(403, 'Forbidden');
       }
       const policy = cancellationPolicy(booking.status);
-      const updated = await prisma.booking.update({
-        where: { id: booking.id },
-        data: {
-          status: 'CANCELLED',
-          cancelledAt: new Date(),
-          cancellationReason: req.body.reason,
-          cancellationFeeCents: policy.feeCents
-        },
-        include: { customer: true }
+      if (booking.status === 'CANCELLED') {
+        const existing = await prisma.booking.findUnique({
+          where: { id: booking.id },
+          include: { customer: true }
+        });
+        return res.json({ ...mapBookingDto(existing!), policy });
+      }
+      if (!policy.refundable && ['IN_PROGRESS', 'COMPLETED'].includes(booking.status)) {
+        throw new HttpError(400, policy.summary);
+      }
+      const updated = await prisma.$transaction(async (tx) => {
+        const changed = await tx.booking.updateMany({
+          where: { id: booking.id, status: booking.status },
+          data: {
+            status: 'CANCELLED',
+            cancelledAt: new Date(),
+            cancellationReason: req.body.reason,
+            cancellationFeeCents: policy.feeCents
+          }
+        });
+        if (changed.count !== 1) throw new HttpError(409, 'Booking changed; refresh and retry');
+        await tx.bookingStatusHistory.create({
+          data: {
+            bookingId: booking.id,
+            fromStatus: booking.status,
+            toStatus: 'CANCELLED',
+            actorId: req.auth!.profileId,
+            actorRole: req.auth!.role,
+            reason: req.body.reason || 'Booking cancelled'
+          }
+        });
+        return tx.booking.findUniqueOrThrow({
+          where: { id: booking.id },
+          include: { customer: true }
+        });
       });
       if (booking.driverId) {
         await prisma.driverProfile.update({
@@ -487,7 +691,8 @@ bookingsRouter.post(
           amountCents: paid.amountZar,
           reason: req.body.reason || 'Customer cancellation',
           actorId: req.auth!.profileId,
-          cancellationFeeCents: policy.feeCents
+          cancellationFeeCents: policy.feeCents,
+          idempotencyKey: `cancellation:${booking.id}:${paid.id}`
         });
       }
       publishEvent('booking.status', { bookingId: booking.id, status: 'CANCELLED' });
@@ -553,4 +758,3 @@ function cancellationPolicy(status: string) {
     summary: 'No refund once the wash is in progress or completed. Rewash guarantee may apply.'
   };
 }
-

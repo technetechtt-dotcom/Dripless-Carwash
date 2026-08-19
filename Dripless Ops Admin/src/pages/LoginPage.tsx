@@ -3,7 +3,7 @@ import { apiRuntimeConfig } from '@shared/api';
 import { useOpsAuth } from '../contexts/OpsAuthContext';
 
 export const LoginPage = () => {
-  const { login, isLoading } = useOpsAuth();
+  const { login, loginWithPasskey, isLoading } = useOpsAuth();
   const [email, setEmail] = useState('ops@demo.dripless.local');
   const [password, setPassword] = useState('DemoPass123!');
   const [apiBaseUrl, setApiBaseUrl] = useState(
@@ -36,6 +36,15 @@ export const LoginPage = () => {
         return;
       }
       setError(message);
+    }
+  };
+  const handlePasskey = async () => {
+    setError('');
+    try {
+      if (apiBaseUrl.trim()) apiRuntimeConfig.setApiBaseUrl(apiBaseUrl.trim());
+      await loginWithPasskey();
+    } catch (authError) {
+      setError(authError instanceof Error ? authError.message : 'Passkey sign-in failed');
     }
   };
 
@@ -109,6 +118,9 @@ export const LoginPage = () => {
             {isLoading ? 'Signing in…' : 'Sign in'}
           </button>
         </form>
+        <button type="button" className="secondary" disabled={isLoading} onClick={() => void handlePasskey()}>
+          Sign in with a passkey
+        </button>
         <p className="muted" style={{ margin: 0, fontSize: 12 }}>
           Demo: ops@demo.dripless.local / DemoPass123!
         </p>

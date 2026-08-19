@@ -1,295 +1,83 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import {
-  ArrowLeftIcon,
-  CarIcon,
-  PackageIcon,
-  SunIcon,
-  HomeIcon,
-  SearchIcon,
-  FilterIcon,
-  DownloadIcon } from
-'lucide-react';
+import { ArrowLeftIcon, CalendarClockIcon, DownloadIcon, MapPinIcon, SearchIcon } from 'lucide-react';
+import { toast } from 'sonner';
+import { useBookings } from '../contexts/BookingContext';
 import { formatCurrency, formatPoints } from '../utils/currency';
 import { ROUTES } from '../utils/routes';
+
+type Filter = 'all' | 'active' | 'completed' | 'cancelled';
+
+const routeForService = (service: string) => {
+  const value = service.toLowerCase();
+  if (value.includes('ride') || value.includes('taxi')) return 'taxi';
+  if (value.includes('parcel') || value.includes('delivery')) return 'delivery';
+  if (value.includes('solar') || value.includes('window')) return 'window-solar-clean';
+  return 'car-wash';
+};
+
 const ServiceHistory = () => {
   const navigate = useNavigate();
-  const [selectedFilter, setSelectedFilter] = useState('all');
-  const [searchQuery, setSearchQuery] = useState('');
-  const serviceHistory = [
-  {
-    id: 1,
-    type: 'car-wash',
-    title: 'Car Wash - Premium',
-    date: 'Yesterday, 3:30 PM',
-    location: '123 Main St, Downtown',
-    price: 24.99,
-    status: 'completed',
-    ecoPoints: 250,
-    icon: CarIcon,
-    color: 'teal'
-  },
-  {
-    id: 2,
-    type: 'taxi',
-    title: 'Eco Taxi',
-    date: 'May 12, 10:15 AM',
-    location: 'Airport to Home',
-    price: 18.5,
-    status: 'completed',
-    ecoPoints: 185,
-    icon: CarIcon,
-    color: 'green'
-  },
-  {
-    id: 3,
-    type: 'window-solar-clean',
-    title: 'Window Cleaning',
-    date: 'May 5, 2:00 PM',
-    location: '456 Oak Avenue',
-    price: 39.99,
-    status: 'completed',
-    ecoPoints: 400,
-    icon: HomeIcon,
-    color: 'blue'
-  },
-  {
-    id: 4,
-    type: 'delivery',
-    title: 'Parcel Delivery',
-    date: 'April 28, 4:45 PM',
-    location: 'Downtown to Suburbs',
-    price: 12.0,
-    status: 'completed',
-    ecoPoints: 120,
-    icon: PackageIcon,
-    color: 'blue'
-  },
-  {
-    id: 5,
-    type: 'car-wash',
-    title: 'Car Wash - Basic',
-    date: 'April 20, 11:00 AM',
-    location: '789 Elm Street',
-    price: 15.99,
-    status: 'completed',
-    ecoPoints: 160,
-    icon: CarIcon,
-    color: 'teal'
-  },
-  {
-    id: 6,
-    type: 'window-solar-clean',
-    title: 'Solar Panel Cleaning',
-    date: 'April 15, 9:30 AM',
-    location: '321 Pine Road',
-    price: 45.0,
-    status: 'completed',
-    ecoPoints: 450,
-    icon: SunIcon,
-    color: 'blue'
-  }];
+  const { bookings, cancelBooking } = useBookings();
+  const [filter, setFilter] = useState<Filter>('all');
+  const [search, setSearch] = useState('');
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const visible = useMemo(() => bookings.filter((booking) => {
+    const matchesFilter = filter === 'all' || (filter === 'active' ? ['pending', 'confirmed', 'in-progress'].includes(booking.status) : booking.status === filter);
+    const query = search.trim().toLowerCase();
+    return matchesFilter && (!query || `${booking.service} ${booking.option} ${booking.location} ${booking.id}`.toLowerCase().includes(query));
+  }), [bookings, filter, search]);
+  const completed = bookings.filter((booking) => booking.status === 'completed');
+  const totalSpent = completed.reduce((sum, booking) => sum + booking.price, 0);
+  const totalPoints = completed.reduce((sum, booking) => sum + booking.ecoPoints, 0);
 
-  const filters = [
-  {
-    id: 'all',
-    label: 'All Services'
-  },
-  {
-    id: 'car-wash',
-    label: 'Car Wash'
-  },
-  {
-    id: 'taxi',
-    label: 'Taxi'
-  },
-  {
-    id: 'window-solar-clean',
-    label: 'Cleaning'
-  },
-  {
-    id: 'delivery',
-    label: 'Delivery'
-  }];
-
-  const filteredHistory =
-  selectedFilter === 'all' ?
-  serviceHistory :
-  serviceHistory.filter((service) => service.type === selectedFilter);
-  const totalSpent = serviceHistory.reduce(
-    (sum, service) => sum + service.price,
-    0
-  );
-  const totalEcoPoints = serviceHistory.reduce(
-    (sum, service) => sum + service.ecoPoints,
-    0
-  );
   const exportHistory = () => {
-    const headers = ['id', 'type', 'title', 'date', 'location', 'price', 'status', 'ecoPoints'];
-    const rows = filteredHistory.map((service) => [
-      String(service.id),
-      service.type,
-      service.title,
-      service.date,
-      service.location,
-      String(service.price),
-      service.status,
-      String(service.ecoPoints)
-    ]);
-    const csv = [headers, ...rows]
+    const rows = visible.map((booking) => [booking.id, booking.service, booking.option, booking.date, booking.time, booking.location, booking.price, booking.status, booking.ecoPoints]);
+    const csv = [['id', 'service', 'option', 'date', 'time', 'location', 'price_zar', 'status', 'eco_points'], ...rows]
       .map((row) => row.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(','))
       .join('\n');
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
+    const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
     const link = document.createElement('a');
     link.href = url;
-    link.download = 'service-history.csv';
+    link.download = 'dripless-bookings.csv';
     link.click();
     URL.revokeObjectURL(url);
   };
-  return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <div className="bg-gradient-to-r from-teal-500 to-green-500 pt-6 pb-6 px-4 text-white">
-        <div className="flex items-center mb-4">
-          <button onClick={() => navigate(-1)} className="mr-3">
-            <ArrowLeftIcon size={24} />
-          </button>
-          <h1 className="text-2xl font-bold">Service History</h1>
+
+  const cancel = async (id: string) => {
+    setBusyId(id);
+    try {
+      await cancelBooking(id, 'Cancelled from customer booking history');
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Unable to cancel booking');
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  return <main className="min-h-screen bg-slate-50 dark:bg-slate-950 pb-24">
+    <header className="bg-gradient-to-r from-teal-500 to-green-500 pt-6 pb-8 px-4 text-white">
+      <div className="flex items-center mb-5"><button onClick={() => navigate(-1)} className="mr-3" aria-label="Go back"><ArrowLeftIcon /></button><h1 className="text-2xl font-bold">Bookings</h1></div>
+      <div className="bg-white/20 rounded-xl p-3 flex items-center"><SearchIcon size={18} className="mr-2" /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search your bookings" className="bg-transparent flex-1 text-white placeholder-white/70 outline-none" /></div>
+    </header>
+    <section className="p-4 max-w-2xl mx-auto space-y-4">
+      <div className="glass-card p-4 grid grid-cols-3 text-center dark:bg-slate-800/90"><div><strong className="text-xl text-eco-600">{bookings.length}</strong><p className="text-xs text-slate-500">Bookings</p></div><div className="border-x border-slate-200 dark:border-slate-700"><strong className="text-xl dark:text-white">{formatCurrency(totalSpent)}</strong><p className="text-xs text-slate-500">Completed value</p></div><div><strong className="text-xl text-blue-600">{formatPoints(totalPoints)}</strong><p className="text-xs text-slate-500">EcoPoints</p></div></div>
+      <div className="flex gap-2 overflow-x-auto">{(['all', 'active', 'completed', 'cancelled'] as Filter[]).map((value) => <button key={value} onClick={() => setFilter(value)} className={`px-4 py-2 rounded-xl text-sm font-bold capitalize ${filter === value ? 'bg-eco-600 text-white' : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300'}`}>{value}</button>)}</div>
+
+      {visible.length === 0 ? <div className="glass-card p-8 text-center text-slate-500">No bookings match this view.</div> : visible.map((booking) => <article key={booking.id} className="glass-card p-5 dark:bg-slate-800/90">
+        <div className="flex justify-between gap-4"><div><h2 className="font-bold text-slate-900 dark:text-white">{booking.service} · {booking.option}</h2><p className="text-xs text-slate-500 font-mono mt-1">{booking.id}</p></div><div className="text-right"><strong className="dark:text-white">{formatCurrency(booking.price)}</strong><p className="text-xs capitalize text-eco-600 font-bold mt-1">{booking.status}</p></div></div>
+        <div className="mt-4 space-y-2 text-sm text-slate-600 dark:text-slate-300"><p className="flex gap-2"><CalendarClockIcon size={16} />{booking.date} at {booking.time}</p><p className="flex gap-2"><MapPinIcon size={16} />{booking.location}</p></div>
+        <div className="flex flex-wrap justify-end gap-3 mt-4 pt-4 border-t border-slate-200 dark:border-slate-700">
+          <button onClick={() => navigate(ROUTES.SERVICE_DETAILS, { state: { service: booking } })} className="text-sm font-bold text-slate-600 dark:text-slate-300">Details</button>
+          {['pending', 'confirmed', 'in-progress'].includes(booking.status) ? <button onClick={() => navigate(ROUTES.TRACKING, { state: { bookingId: booking.id } })} className="text-sm font-bold text-eco-600">Track</button> : null}
+          {['pending', 'confirmed'].includes(booking.status) ? <button disabled={busyId === booking.id} onClick={() => void cancel(booking.id)} className="text-sm font-bold text-red-600 disabled:opacity-50">Cancel</button> : null}
+          {booking.status === 'completed' ? <button onClick={() => navigate(ROUTES.RATE_SERVICE, { state: { bookingId: booking.id, service: { name: booking.service, date: booking.date } } })} className="text-sm font-bold text-amber-600">Rate</button> : null}
+          <button onClick={() => navigate(ROUTES.BOOK_SERVICE(routeForService(booking.service)))} className="text-sm font-bold text-slate-600 dark:text-slate-300">Rebook</button>
         </div>
-
-        {/* Search Bar */}
-        <div className="bg-white/20 backdrop-blur-sm rounded-lg p-3 flex items-center">
-          <SearchIcon size={18} className="mr-2" />
-          <input
-            type="text"
-            placeholder="Search services..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="bg-transparent flex-1 text-white placeholder-white/70 outline-none" />
-
-        </div>
-      </div>
-
-      {/* Stats Summary */}
-      <div className="bg-white mx-4 rounded-xl shadow-sm p-4 -mt-4 mb-4">
-        <div className="grid grid-cols-3 gap-4">
-          <div className="text-center">
-            <p className="text-2xl font-bold text-teal-600">
-              {serviceHistory.length}
-            </p>
-            <p className="text-xs text-gray-500">Total Services</p>
-          </div>
-          <div className="text-center border-x border-gray-200">
-            <p className="text-2xl font-bold text-green-600">
-              {formatCurrency(totalSpent)}
-            </p>
-            <p className="text-xs text-gray-500">Total Spent</p>
-          </div>
-          <div className="text-center">
-            <p className="text-2xl font-bold text-blue-600">
-              {formatPoints(totalEcoPoints)}
-            </p>
-            <p className="text-xs text-gray-500">EcoPoints Earned</p>
-          </div>
-        </div>
-      </div>
-
-      {/* Filter Tabs */}
-      <div className="px-4 mb-4">
-        <div className="flex items-center justify-between mb-3">
-          <div className="flex gap-2 overflow-x-auto">
-            {filters.map((filter) =>
-            <button
-              key={filter.id}
-              onClick={() => setSelectedFilter(filter.id)}
-              className={`px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap ${selectedFilter === filter.id ? 'bg-teal-500 text-white' : 'bg-white text-gray-600'}`}>
-
-                {filter.label}
-              </button>
-            )}
-          </div>
-          <button
-            className="bg-white p-2 rounded-lg ml-2"
-            onClick={() => setSelectedFilter('all')}>
-            <FilterIcon size={18} className="text-gray-600" />
-          </button>
-        </div>
-      </div>
-
-      {/* Service List */}
-      <div className="px-4 space-y-3">
-        {filteredHistory.map((service) => {
-          const Icon = service.icon;
-          return (
-            <div key={service.id} className="bg-white rounded-xl shadow-sm p-4">
-              <div className="flex items-start justify-between mb-3">
-                <div className="flex items-start">
-                  <div
-                    className={`bg-${service.color}-100 p-2 rounded-lg mr-3`}>
-
-                    <Icon size={18} className={`text-${service.color}-600`} />
-                  </div>
-                  <div>
-                    <h3 className="font-medium text-gray-800">
-                      {service.title}
-                    </h3>
-                    <p className="text-xs text-gray-500 mt-1">{service.date}</p>
-                    <p className="text-xs text-gray-500">{service.location}</p>
-                  </div>
-                </div>
-                <div className="text-right">
-                  <p className="font-bold text-gray-800">
-                    {formatCurrency(service.price)}
-                  </p>
-                  <span className="bg-green-100 text-green-800 text-xs px-2 py-1 rounded-full">
-                    Completed
-                  </span>
-                </div>
-              </div>
-
-              <div className="flex items-center justify-between pt-3 border-t border-gray-100">
-                <div className="flex items-center text-xs text-gray-500">
-                  <span className="text-teal-600 font-medium">
-                    +{formatPoints(service.ecoPoints)} EcoPoints
-                  </span>
-                </div>
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => {
-                      const { icon, ...serviceData } = service;
-                      navigate('/service-details', {
-                        state: {
-                          service: serviceData
-                        }
-                      });
-                    }}
-                    className="text-teal-600 text-xs font-medium">
-
-                    View Details
-                  </button>
-                  <button
-                    className="text-gray-500 text-xs font-medium"
-                    onClick={() => navigate(ROUTES.BOOK_SERVICE(service.type))}>
-                    Rebook
-                  </button>
-                </div>
-              </div>
-            </div>);
-
-        })}
-      </div>
-
-      {/* Export Button */}
-      <div className="px-4 py-6">
-        <button
-          className="w-full bg-white border border-gray-300 text-gray-700 py-3 rounded-lg font-medium flex items-center justify-center"
-          onClick={exportHistory}>
-          <DownloadIcon size={18} className="mr-2" />
-          Export History
-        </button>
-      </div>
-    </div>);
-
+      </article>)}
+      <button onClick={exportHistory} disabled={visible.length === 0} className="w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 dark:text-white py-3 rounded-xl font-bold flex items-center justify-center gap-2 disabled:opacity-50"><DownloadIcon size={18} />Export current view</button>
+    </section>
+  </main>;
 };
+
 export default ServiceHistory;

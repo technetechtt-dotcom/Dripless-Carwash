@@ -79,29 +79,7 @@ const demoSlides = [
   icon: DiscIcon
 }];
 
-// Mock feedback data
-const recentFeedback = [
-{
-  id: 1,
-  customer: 'Sarah M.',
-  rating: 5,
-  comment: 'Spotless finish, love the eco approach!',
-  date: '2 hours ago'
-},
-{
-  id: 2,
-  customer: 'James K.',
-  rating: 4,
-  comment: 'Great service, very convenient.',
-  date: 'Yesterday'
-},
-{
-  id: 3,
-  customer: 'Priya R.',
-  rating: 5,
-  comment: "Best waterless wash I've tried.",
-  date: '2 days ago'
-}];
+const recentFeedback: Array<{ id: number; customer: string; rating: number; comment: string; date: string }> = [];
 
 const DriplessFeatures = () => {
   const navigate = useNavigate();
@@ -115,10 +93,10 @@ const DriplessFeatures = () => {
   const [washReminderEnabled, setWashReminderEnabled] = useState(true);
   const [washReminderDays, setWashReminderDays] = useState(14);
   // Wash report stats
-  const totalWashes = completedBookings.length + 3; // mock extra
+  const totalWashes = completedBookings.filter((booking) => booking.service.toLowerCase().includes('wash')).length;
   const totalSpent =
-  completedBookings.reduce((sum, b) => sum + b.price, 0) + 89.97;
-  const avgRating = 4.7;
+  completedBookings.reduce((sum, b) => sum + b.price, 0);
+  const avgRating = '—';
   const waterSaved = totalWashes * 150;
   return (
     <motion.div
@@ -406,7 +384,7 @@ const DriplessFeatures = () => {
 
               </div>
               <p className="text-2xl font-bold text-slate-800 dark:text-white">
-                ${totalSpent.toFixed(0)}
+                R{totalSpent.toFixed(0)}
               </p>
               <p className="text-xs text-slate-500 dark:text-slate-400">
                 Total Spent
@@ -566,7 +544,7 @@ const DriplessFeatures = () => {
               whileTap={{
                 scale: 0.96
               }}
-              onClick={() => setShowFeedbackModal(true)}
+              onClick={() => navigate('/feedback')}
               className="text-eco-600 dark:text-eco-400 text-sm font-bold">
 
               + Leave Review
@@ -574,6 +552,7 @@ const DriplessFeatures = () => {
           </div>
 
           <div className="space-y-3">
+            {recentFeedback.length === 0 ? <div className="glass-card p-4 text-sm text-slate-500 dark:text-slate-400">Public reviews are not available yet.</div> : null}
             {recentFeedback.map((fb) =>
             <div key={fb.id} className="glass-card p-4">
                 <div className="flex items-start justify-between mb-2">

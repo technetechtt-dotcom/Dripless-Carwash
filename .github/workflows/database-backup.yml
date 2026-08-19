@@ -1,0 +1,34 @@
+name: Production Database Backup
+
+on:
+  schedule:
+    - cron: '43 1 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    environment: production-backup
+    steps:
+      - name: Create encrypted custom-format backup
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          BACKUP_S3_URI: ${{ secrets.BACKUP_S3_URI }}
+          BACKUP_KMS_KEY_ID: ${{ secrets.BACKUP_KMS_KEY_ID }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: ${{ secrets.AWS_REGION }}
+        run: |
+          set -euo pipefail
+          test -n "$DATABASE_URL"
+          test -n "$BACKUP_S3_URI"
+          test -n "$BACKUP_KMS_KEY_ID"
+          backup="dripless-$(date -u +%Y%m%dT%H%M%SZ).dump"
+          docker run --rm -e DATABASE_URL -v "$PWD:/backup" postgres:17 \
+            pg_dump --format=custom --compress=9 --no-owner --no-acl --file="/backup/$backup" "$DATABASE_URL"
+          sha256sum "$backup" > "$backup.sha256"
+          aws s3 cp "$backup" "$BACKUP_S3_URI/$backup" --sse aws:kms --sse-kms-key-id "$BACKUP_KMS_KEY_ID"
+          aws s3 cp "$backup.sha256" "$BACKUP_S3_URI/$backup.sha256" --sse aws:kms --sse-kms-key-id "$BACKUP_KMS_KEY_ID"

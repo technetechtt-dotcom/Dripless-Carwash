@@ -6,6 +6,9 @@ import { validate } from '../middleware/validate.js';
 import { HttpError } from '../middleware/error.js';
 import { mapIncident, rankDriversForBooking } from '../bookings/dispatch.js';
 import { mapBookingDto, mapCustomerProfile, mapDriverProfile } from '../dto/mappers.js';
+import { createSignedDownload, readLocalObject } from '../evidence/storage.js';
+import { notifyUser } from '../notifications/service.js';
+import { verifyPassword } from '../auth/password.js';
 
 export const opsRouter = Router();
 
@@ -106,6 +109,70 @@ opsRouter.get('/drivers', permissionRequired('drivers:read'), async (_req, res, 
     next(error);
   }
 });
+
+opsRouter.get('/driver-documents', permissionRequired('drivers:verify'), async (req, res, next) => {
+  try {
+    const status = String(req.query.status || 'PENDING');
+    const rows = await prisma.driverDocument.findMany({
+      where: status === 'ALL' ? {} : { status: status as 'PENDING' | 'APPROVED' | 'REJECTED' | 'EXPIRED' },
+      include: { driver: { include: { user: true } } },
+      orderBy: [{ status: 'asc' }, { createdAt: 'asc' }],
+      take: 250
+    });
+    res.json(
+      rows.map(({ storageKey: _storageKey, ...row }) => ({
+        ...row,
+        downloadPath: `/ops/drivers/${row.driverId}/documents/${row.id}/download`
+      }))
+    );
+  } catch (error) {
+    next(error);
+  }
+});
+
+opsRouter.get('/driver-documents/expiry', permissionRequired('drivers:verify'), async (_req, res, next) => {
+  try {
+    const within30Days = new Date(Date.now() + 30 * 86400000);
+    const rows = await prisma.driverDocument.findMany({
+      where: { expiresAt: { lte: within30Days } },
+      include: { driver: true },
+      orderBy: { expiresAt: 'asc' }
+    });
+    res.json(rows.map(({ storageKey: _storageKey, ...row }) => row));
+  } catch (error) {
+    next(error);
+  }
+});
+
+opsRouter.get(
+  '/drivers/:driverId/documents/:documentId/download',
+  permissionRequired('drivers:verify'),
+  async (req, res, next) => {
+    try {
+      const document = await prisma.driverDocument.findFirst({
+        where: { id: String(req.params.documentId), driverId: String(req.params.driverId) }
+      });
+      if (!document) throw new HttpError(404, 'Document not found');
+      await prisma.auditLog.create({
+        data: {
+          actorId: req.auth!.userId,
+          actorRole: 'ops_admin',
+          action: 'DRIVER_DOCUMENT_REVIEWED_FILE',
+          targetId: document.id,
+          message: `Ops accessed ${document.kind} for review`
+        }
+      });
+      const signed = await createSignedDownload(document.storageKey);
+      if (signed) return res.redirect(302, signed);
+      const local = readLocalObject(document.storageKey);
+      if (!local) throw new HttpError(404, 'Document object not found');
+      res.setHeader('Cache-Control', 'private, no-store');
+      res.type(document.mimeType).send(local);
+    } catch (error) {
+      next(error);
+    }
+  }
+);
 
 opsRouter.get(
   '/driver-locations',
@@ -511,7 +578,7 @@ opsRouter.patch(
     driverId: z.string().min(1),
     bookingId: z.string().optional(),
     actorId: z.string().optional(),
-    reason: z.string().optional()
+    reason: z.string().min(5).max(500)
   })),
   async (req, res, next) => {
     try {
@@ -520,34 +587,67 @@ opsRouter.patch(
       });
       if (!booking) throw new HttpError(404, 'Booking not found');
       const driver = await prisma.driverProfile.findUnique({
-        where: { id: req.body.driverId }
+        where: { id: req.body.driverId },
+        include: { location: true }
       });
-      if (!driver || driver.status !== 'ACTIVE') {
+      if (
+        !driver ||
+        driver.status !== 'ACTIVE' ||
+        driver.verificationStatus !== 'VERIFIED' ||
+        !driver.online ||
+        !driver.location ||
+        driver.location.updatedAt < new Date(Date.now() - 120_000) ||
+        (driver.activeBookingId && driver.activeBookingId !== booking.id)
+      ) {
         throw new HttpError(400, 'Driver not assignable');
       }
       const updated = await prisma.$transaction(async (tx) => {
-        const row = await tx.booking.update({
-          where: { id: booking.id },
+        const driverClaim = await tx.driverProfile.updateMany({
+          where: {
+            id: driver.id,
+            activeBookingId: driver.activeBookingId,
+            online: true,
+            status: 'ACTIVE',
+            verificationStatus: 'VERIFIED'
+          },
+          data: { activeBookingId: booking.id }
+        });
+        if (driverClaim.count !== 1) throw new HttpError(409, 'Driver was assigned concurrently');
+        const bookingClaim = await tx.booking.updateMany({
+          where: { id: booking.id, driverId: booking.driverId, status: booking.status },
           data: {
             driverId: driver.id,
             status: booking.status === 'PENDING' ? 'CONFIRMED' : booking.status,
-            dispatchReason: req.body.reason || 'Manual ops assignment',
-            dispatchAttemptCount: { increment: 1 }
-          },
-          include: { customer: true }
+            dispatchReason: req.body.reason,
+            dispatchAttemptCount: { increment: 1 },
+            acceptBy: new Date(Date.now() + driver.acceptTimeoutSec * 1000)
+          }
         });
+        if (bookingClaim.count !== 1) throw new HttpError(409, 'Booking was assigned concurrently');
+        if (booking.driverId && booking.driverId !== driver.id) {
+          await tx.driverProfile.updateMany({
+            where: { id: booking.driverId, activeBookingId: booking.id },
+            data: { activeBookingId: null }
+          });
+        }
         await tx.bookingAssignment.create({
           data: {
             bookingId: booking.id,
             driverId: driver.id,
-            reason: req.body.reason || 'Manual ops assignment'
+            reason: req.body.reason
           }
         });
-        await tx.driverProfile.update({
-          where: { id: driver.id },
-          data: { activeBookingId: booking.id }
+        await tx.bookingStatusHistory.create({
+          data: {
+            bookingId: booking.id,
+            fromStatus: booking.status,
+            toStatus: booking.status === 'PENDING' ? 'CONFIRMED' : booking.status,
+            actorId: req.auth!.profileId,
+            actorRole: 'ops_admin',
+            reason: req.body.reason
+          }
         });
-        return row;
+        return tx.booking.findUniqueOrThrow({ where: { id: booking.id }, include: { customer: true } });
       });
       res.json(mapBookingDto(updated));
     } catch (error) {
@@ -660,15 +760,29 @@ opsRouter.post(
   '/drivers/:driverId/documents/:documentId/review',
   permissionRequired('drivers:verify'),
   validate(
-    z.object({
-      status: z.enum(['APPROVED', 'REJECTED']),
-      reason: z.string().max(500).optional()
-    })
+    z
+      .object({
+        status: z.enum(['APPROVED', 'REJECTED']),
+        reason: z.string().max(500).optional()
+      })
+      .superRefine((value, ctx) => {
+        if (value.status === 'REJECTED' && (!value.reason || value.reason.trim().length < 10)) {
+          ctx.addIssue({ code: 'custom', path: ['reason'], message: 'A clear rejection reason is required' });
+        }
+      })
   ),
   async (req, res, next) => {
     try {
+      const existing = await prisma.driverDocument.findFirst({
+        where: { id: String(req.params.documentId), driverId: String(req.params.driverId) },
+        include: { driver: { include: { user: true } } }
+      });
+      if (!existing) throw new HttpError(404, 'Driver document not found');
+      if (req.body.status === 'APPROVED' && existing.expiresAt && existing.expiresAt <= new Date()) {
+        throw new HttpError(400, 'Expired documents cannot be approved');
+      }
       const doc = await prisma.driverDocument.update({
-        where: { id: String(req.params.documentId) },
+        where: { id: existing.id },
         data: {
           status: req.body.status,
           rejectionReason: req.body.reason,
@@ -677,10 +791,23 @@ opsRouter.post(
         }
       });
       if (req.body.status === 'APPROVED') {
-        const pending = await prisma.driverDocument.count({
-          where: { driverId: String(req.params.driverId), status: 'PENDING' }
+        const documents = await prisma.driverDocument.findMany({
+          where: { driverId: String(req.params.driverId) },
+          orderBy: [{ kind: 'asc' }, { submissionVersion: 'desc' }]
         });
-        if (pending === 0) {
+        const latestByKind = new Map<string, (typeof documents)[number]>();
+        for (const document of documents) {
+          if (!latestByKind.has(document.kind)) latestByKind.set(document.kind, document);
+        }
+        const required = ['SA_ID', 'DRIVERS_LICENCE', 'PROOF_OF_ADDRESS', 'VEHICLE_REGISTRATION'];
+        const compliant = required.every((kind) => {
+          const document = latestByKind.get(kind);
+          return (
+            document?.status === 'APPROVED' &&
+            (!document.expiresAt || document.expiresAt > new Date())
+          );
+        });
+        if (compliant) {
           await prisma.driverProfile.update({
             where: { id: String(req.params.driverId) },
             data: { verificationStatus: 'VERIFIED', status: 'ACTIVE', verificationNote: null }
@@ -692,7 +819,135 @@ opsRouter.post(
           data: { verificationStatus: 'REJECTED', verificationNote: req.body.reason }
         });
       }
+      await prisma.auditLog.create({
+        data: {
+          actorId: req.auth!.userId,
+          actorRole: 'ops_admin',
+          action: `DRIVER_DOCUMENT_${req.body.status}`,
+          targetId: doc.id,
+          message: `${doc.kind} ${req.body.status.toLowerCase()} for driver ${req.params.driverId}`,
+          metadata: { reason: req.body.reason || null, submissionVersion: doc.submissionVersion }
+        }
+      });
+      await notifyUser({
+        userId: existing.driver.userId,
+        email: existing.driver.user.email,
+        phone: existing.driver.phone || undefined,
+        title: `Driver document ${req.body.status.toLowerCase()}`,
+        message:
+          req.body.status === 'APPROVED'
+            ? `${doc.kind} was approved.`
+            : `${doc.kind} was rejected: ${req.body.reason}`,
+        template: `driver.document_${req.body.status.toLowerCase()}`
+      });
       res.json(doc);
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+opsRouter.post(
+  '/high-risk-approvals',
+  validate(
+    z.object({
+      action: z.enum(['PAYMENT_REFUND', 'WALLET_ADJUSTMENT', 'COMPLETION_PROOF_OVERRIDE', 'PAYOUT_APPROVAL']),
+      payload: z.record(z.string(), z.unknown()),
+      reason: z.string().min(10).max(500)
+    })
+  ),
+  async (req, res, next) => {
+    try {
+      const row = await prisma.highRiskApproval.create({
+        data: {
+          action: req.body.action,
+          payload: { ...req.body.payload, reason: req.body.reason },
+          requestedBy: req.auth!.profileId
+        }
+      });
+      res.status(201).json(row);
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+opsRouter.post(
+  '/high-risk-approvals/:approvalId/approve',
+  validate(z.object({ password: z.string().min(8) })),
+  async (req, res, next) => {
+    try {
+      const approval = await prisma.highRiskApproval.findUnique({
+        where: { id: String(req.params.approvalId) }
+      });
+      if (!approval) throw new HttpError(404, 'Approval request not found');
+      if (approval.status !== 'PENDING') throw new HttpError(409, 'Approval request is no longer pending');
+      if (approval.requestedBy === req.auth!.profileId) {
+        throw new HttpError(403, 'A different Ops administrator must approve this action');
+      }
+      const user = await prisma.user.findUnique({ where: { id: req.auth!.userId } });
+      if (!user || !(await verifyPassword(req.body.password, user.passwordHash))) {
+        throw new HttpError(401, 'Reauthentication failed');
+      }
+      const changed = await prisma.highRiskApproval.updateMany({
+        where: { id: approval.id, status: 'PENDING' },
+        data: {
+          status: 'APPROVED',
+          approvedBy: req.auth!.profileId,
+          decidedAt: new Date()
+        }
+      });
+      if (changed.count !== 1) throw new HttpError(409, 'Approval was decided concurrently');
+      res.json(await prisma.highRiskApproval.findUniqueOrThrow({ where: { id: approval.id } }));
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+opsRouter.post(
+  '/bookings/:bookingId/completion-proof-override',
+  permissionRequired('bookings:update'),
+  validate(z.object({ approvalId: z.string().min(1), reason: z.string().min(15).max(500) })),
+  async (req, res, next) => {
+    try {
+      const approval = await prisma.highRiskApproval.findUnique({ where: { id: req.body.approvalId } });
+      const payload = (approval?.payload || {}) as Record<string, unknown>;
+      if (
+        !approval ||
+        approval.status !== 'APPROVED' ||
+        approval.action !== 'COMPLETION_PROOF_OVERRIDE' ||
+        String(payload.bookingId || '') !== String(req.params.bookingId)
+      ) {
+        throw new HttpError(403, 'Approved completion-proof override is required');
+      }
+      const updated = await prisma.$transaction(async (tx) => {
+        const consumed = await tx.highRiskApproval.updateMany({
+          where: { id: approval.id, status: 'APPROVED' },
+          data: { status: 'CONSUMED' }
+        });
+        if (consumed.count !== 1) throw new HttpError(409, 'Approval was already consumed');
+        const booking = await tx.booking.update({
+          where: { id: String(req.params.bookingId) },
+          data: {
+            completionProofOverrideAt: new Date(),
+            completionProofOverrideBy: req.auth!.profileId,
+            completionProofOverrideReason: req.body.reason
+          }
+        });
+        await tx.auditLog.create({
+          data: {
+            actorId: req.auth!.userId,
+            actorRole: 'ops_admin',
+            action: 'COMPLETION_PROOF_OVERRIDE',
+            targetId: booking.id,
+            message: req.body.reason,
+            metadata: { approvalId: approval.id }
+          }
+        });
+        return booking;
+      });
+      res.json(mapBookingDto(updated));
     } catch (error) {
       next(error);
     }

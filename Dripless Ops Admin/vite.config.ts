@@ -1,4 +1,4 @@
-import { defineConfig } from 'vite';
+import { defineConfig } from 'vitest/config';
 import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
 import { resolve } from 'node:path';
@@ -42,6 +42,14 @@ export default defineConfig({
   resolve: {
     alias: {
       '@shared': resolve(__dirname, '../shared-contract/src')
+    }
+  },
+  test: {
+    coverage: {
+      provider: 'v8',
+      reporter: ['text', 'json-summary'],
+      include: ['src/pages/dashboard/{formatters,navigation}.ts'],
+      thresholds: { lines: 75, functions: 54, statements: 64, branches: 39 }
     }
   },
   server: {

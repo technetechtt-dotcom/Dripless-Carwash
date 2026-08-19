@@ -3,7 +3,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { ArrowLeftIcon, StarIcon, CheckCircleIcon } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { toast } from 'sonner';
-import ImageUpload from '../components/ImageUpload';
+import { bookingProofApi } from '@shared/api';
 import { useAnalytics } from '../hooks/useAnalytics';
 const RateService = () => {
   const navigate = useNavigate();
@@ -13,26 +13,34 @@ const RateService = () => {
     name: 'Car Wash',
     date: 'Today'
   };
+  const bookingId = typeof location.state?.bookingId === 'string' ? location.state.bookingId : '';
   const [rating, setRating] = useState(0);
   const [comment, setComment] = useState('');
-  const [tip, setTip] = useState<number | null>(null);
-  const [images, setImages] = useState<string[]>([]);
-  const tips = [2, 5, 10];
-  const handleSubmit = () => {
+  const [submitting, setSubmitting] = useState(false);
+  const handleSubmit = async () => {
     if (rating === 0) {
       toast.error('Please select a rating');
       return;
     }
-    trackEvent('Service Rated', {
+    if (!bookingId) {
+      toast.error('A completed booking is required to submit a rating');
+      return;
+    }
+    setSubmitting(true);
+    try {
+      await bookingProofApi.rate(bookingId, rating, comment.trim() || undefined);
+      trackEvent('Service Rated', {
       service: serviceDetails.name,
       rating,
-      hasComment: !!comment,
-      hasTip: !!tip,
-      tipAmount: tip,
-      imagesCount: images.length
-    });
-    toast.success('Thank you for your feedback!');
-    navigate('/home');
+      hasComment: !!comment
+      });
+      toast.success('Thank you for your feedback!');
+      navigate('/home');
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Unable to submit rating');
+    } finally {
+      setSubmitting(false);
+    }
   };
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950 pb-24">
@@ -105,48 +113,16 @@ const RateService = () => {
 
         </div>
 
-        {/* Image Upload */}
-        <div className="glass-card p-5">
-          <ImageUpload
-            label="Add Photos (Optional)"
-            maxImages={3}
-            onImagesChange={setImages} />
-
-        </div>
-
-        {/* Tip */}
-        <div className="glass-card p-5">
-          <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-3 ml-1">
-            Add a Tip
-          </label>
-          <div className="grid grid-cols-4 gap-3">
-            {tips.map((amount) =>
-            <button
-              key={amount}
-              onClick={() => setTip(tip === amount ? null : amount)}
-              className={`py-3 rounded-xl font-bold text-sm transition-all ${tip === amount ? 'bg-eco-500 text-white shadow-md' : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'}`}>
-
-                ${amount}
-              </button>
-            )}
-            <button
-              onClick={() => setTip(0)}
-              className={`py-3 rounded-xl font-bold text-sm transition-all ${tip === 0 ? 'bg-slate-800 text-white dark:bg-white dark:text-slate-900' : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300'}`}>
-
-              No Tip
-            </button>
-          </div>
-        </div>
-
         {/* Submit */}
         <motion.button
           whileTap={{
             scale: 0.96
           }}
-          onClick={handleSubmit}
-          className="btn-primary w-full py-4 font-bold text-lg shadow-xl shadow-eco-500/20">
+          onClick={() => void handleSubmit()}
+          disabled={submitting}
+          className="btn-primary w-full py-4 font-bold text-lg shadow-xl shadow-eco-500/20 disabled:opacity-50">
 
-          Submit Review
+          {submitting ? 'Submitting…' : 'Submit Review'}
         </motion.button>
       </div>
     </div>);

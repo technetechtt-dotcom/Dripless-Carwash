@@ -5,7 +5,7 @@ import React, {
   useState,
   type ReactNode
 } from 'react';
-import { authApi } from '@shared/api';
+import { accountApi, authApi } from '@shared/api';
 import { notify } from '../utils/notify';
 import type { CustomerProfile } from '@shared/types';
 
@@ -17,6 +17,7 @@ interface AuthContextType {
   login: (email: string, password: string) => Promise<void>;
   signup: (name: string, email: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
+  logoutAll: () => Promise<void>;
 }
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export const useAuth = () => {
@@ -71,6 +72,11 @@ export const AuthProvider = ({ children }: {children: ReactNode;}) => {
     setUser(null);
     notify.info('Logged out successfully');
   };
+  const logoutAll = async () => {
+    await accountApi.logoutAll();
+    setUser(null);
+    notify.info('All devices have been signed out');
+  };
   return (
     <AuthContext.Provider
       value={{
@@ -79,7 +85,8 @@ export const AuthProvider = ({ children }: {children: ReactNode;}) => {
         isLoading,
         login,
         signup,
-        logout
+        logout,
+        logoutAll
       }}>
 
       {children}

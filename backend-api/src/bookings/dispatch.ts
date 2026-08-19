@@ -1,6 +1,8 @@
 import type { Prisma } from '@prisma/client';
 import { prisma } from '../db/prisma.js';
 import { env } from '../config/env.js';
+import { sendOperationalAlert } from '../lib/monitoring.js';
+import { roadRoute } from '../geo/zones.js';
 
 export const MAX_AUTO_DISPATCH_ATTEMPTS = 3;
 
@@ -36,17 +38,37 @@ export async function rankDriversForBooking(bookingId: string, limit = 5) {
       online: true,
       OR: [{ activeBookingId: null }, { activeBookingId: bookingId }]
     },
-    include: { location: true }
+    include: { location: true, documents: true, equipment: true, consumables: true }
   });
 
-  const ranked = drivers
-    .map((driver) => {
+  const ranked = (await Promise.all(
+    drivers.map(async (driver) => {
       if (!driver.location && !env.demoMode) return null;
+      const gpsAgeSeconds = driver.location
+        ? Math.round((Date.now() - driver.location.updatedAt.getTime()) / 1000)
+        : null;
+      if (!env.demoMode && (gpsAgeSeconds == null || gpsAgeSeconds > 120)) return null;
+      const criticalDocumentKinds = new Set(['SA_ID', 'DRIVERS_LICENCE', 'VEHICLE_REGISTRATION']);
+      const complianceReady = [...criticalDocumentKinds].every((kind) =>
+        driver.documents.some(
+          (document) =>
+            document.kind === kind &&
+            document.status === 'APPROVED' &&
+            (!document.expiresAt || document.expiresAt > new Date())
+        )
+      );
+      if (!env.demoMode && !complianceReady) return null;
+      const equipmentReady = driver.equipment.some((item) => !item.returnedAt && !item.faultNote);
+      const stockReady = driver.consumables.every((item) => item.quantity > 0);
+      if (!env.demoMode && (!equipmentReady || !stockReady)) return null;
       const origin = driver.location
         ? { lat: driver.location.lat, lng: driver.location.lng }
         : { lat: -26.2041, lng: 28.0473 };
-      const distanceKm = pickup ? haversineKm(origin, pickup) : 12;
-      const etaMinutes = Math.max(5, Math.round(distanceKm * 2.4));
+      const route = pickup
+        ? await roadRoute(origin, pickup)
+        : { distanceKm: 12, etaMinutes: 29 };
+      const distanceKm = route.distanceKm;
+      const etaMinutes = route.etaMinutes;
       const score = etaMinutes - driver.rating * 0.75;
       return {
         driverId: driver.id,
@@ -56,11 +78,15 @@ export async function rankDriversForBooking(bookingId: string, limit = 5) {
         etaMinutes,
         reasons: [
           driver.location ? 'Has live GPS' : 'Demo location fallback',
+          gpsAgeSeconds == null ? 'No GPS timestamp' : `GPS ${gpsAgeSeconds}s old`,
           `ETA ~${etaMinutes} min`,
-          `Rating ${driver.rating.toFixed(2)}`
+          `Rating ${driver.rating.toFixed(2)}`,
+          complianceReady ? 'Compliance ready' : 'Demo compliance fallback',
+          equipmentReady && stockReady ? 'Equipment and stock ready' : 'Demo kit fallback'
         ]
       };
     })
+  ))
     .filter((row): row is NonNullable<typeof row> => Boolean(row))
     .sort((a, b) => a.score - b.score)
     .slice(0, limit);
@@ -84,36 +110,51 @@ export async function autoAssignDriver(
   if (!best) return null;
 
   const reason = `Auto-dispatch best available driver (${best.etaMinutes} min away)`;
-  const updated = await db.booking.update({
-    where: { id: bookingId },
-    data: {
-      driverId: best.driverId,
-      status: booking.status === 'PENDING' ? 'CONFIRMED' : booking.status,
-      dispatchReason: reason,
-      dispatchAttemptCount: { increment: 1 }
-    }
-  });
-  await db.bookingAssignment.create({
-    data: {
-      bookingId,
-      driverId: best.driverId,
-      reason
-    }
-  });
-  await db.driverProfile.update({
-    where: { id: best.driverId },
-    data: { activeBookingId: bookingId }
-  });
-  await db.bookingStatusHistory.create({
-    data: {
-      bookingId,
-      fromStatus: booking.status,
-      toStatus: updated.status,
-      actorRole: 'ops_admin',
-      reason
-    }
-  });
-  return { booking: updated, driverId: best.driverId, reason };
+  const assign = async (transaction: Prisma.TransactionClient) => {
+    const driverClaim = await transaction.driverProfile.updateMany({
+      where: {
+        id: best.driverId,
+        status: 'ACTIVE',
+        verificationStatus: 'VERIFIED',
+        online: true,
+        OR: [{ activeBookingId: null }, { activeBookingId: bookingId }]
+      },
+      data: { activeBookingId: bookingId }
+    });
+    if (driverClaim.count !== 1) return null;
+    const bookingClaim = await transaction.booking.updateMany({
+      where: { id: bookingId, driverId: null, status: booking.status },
+      data: {
+        driverId: best.driverId,
+        status: booking.status === 'PENDING' ? 'CONFIRMED' : booking.status,
+        dispatchReason: reason,
+        dispatchAttemptCount: { increment: 1 },
+        acceptBy: new Date(Date.now() + 30_000)
+      }
+    });
+    if (bookingClaim.count !== 1) throw new Error('Booking was assigned concurrently');
+    const updated = await transaction.booking.findUniqueOrThrow({ where: { id: bookingId } });
+    await transaction.bookingAssignment.create({
+      data: { bookingId, driverId: best.driverId, reason }
+    });
+    await transaction.bookingStatusHistory.create({
+      data: {
+        bookingId,
+        fromStatus: booking.status,
+        toStatus: updated.status,
+        actorRole: 'ops_admin',
+        reason
+      }
+    });
+    return { booking: updated, driverId: best.driverId, reason };
+  };
+  return tx
+    ? assign(tx)
+    : prisma.$transaction(assign, {
+        isolationLevel: 'Serializable',
+        maxWait: 10_000,
+        timeout: 30_000
+      });
 }
 
 export async function createOrRefreshDispatchIncident(
@@ -133,7 +174,7 @@ export async function createOrRefreshDispatchIncident(
       data: { reason, severity, updatedAt: new Date() }
     });
   }
-  return prisma.incident.create({
+  const incident = await prisma.incident.create({
     data: {
       bookingId,
       reason,
@@ -141,6 +182,8 @@ export async function createOrRefreshDispatchIncident(
       status: 'OPEN'
     }
   });
+  await sendOperationalAlert('dispatch_failure', reason, { bookingId, severity }).catch(() => undefined);
+  return incident;
 }
 
 export function mapIncident(row: {

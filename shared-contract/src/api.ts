@@ -166,7 +166,7 @@ const rotateRefreshSession = async (): Promise<boolean> => {
 const requestApi = async <T>(
   path: string,
   options: {
-    method?: 'GET' | 'POST' | 'PATCH' | 'DELETE';
+    method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
     body?: unknown;
     token?: string;
     retryOnAuth?: boolean;
@@ -229,6 +229,25 @@ const getBearerToken = (): string | undefined => {
     void rotateRefreshSession();
   }
   return getActiveSession()?.tokens.accessToken ?? session.tokens.accessToken;
+};
+
+const downloadApiFile = async (path: string, filename: string, retried = false) => {
+  const baseUrl = getApiBaseUrl();
+  const token = getBearerToken();
+  if (!baseUrl || !token) throw new Error('An authenticated remote API session is required');
+  const response = await fetch(`${baseUrl}${path}`, {
+    headers: { Authorization: `Bearer ${token}` }
+  });
+  if (response.status === 401 && !retried && (await rotateRefreshSession())) {
+    return downloadApiFile(path, filename, true);
+  }
+  if (!response.ok) throw new Error(await readRemoteError(response));
+  const objectUrl = URL.createObjectURL(await response.blob());
+  const link = document.createElement('a');
+  link.href = objectUrl;
+  link.download = filename;
+  link.click();
+  setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
 };
 
 export const apiRuntimeConfig = {
@@ -815,9 +834,13 @@ export const authApi = {
       if (!remote.session || !remote.profile) {
         throw new Error('Login failed');
       }
+      const profile = {
+        ...remote.profile,
+        mfaEnrollmentRequired: Boolean(remote.mustEnableMfa)
+      };
       saveSession(remote.session);
-      saveOpsAdminProfile(remote.profile);
-      return remote.profile;
+      saveOpsAdminProfile(profile);
+      return profile;
     }
 
     await delay();
@@ -1009,9 +1032,9 @@ export const bookingApi = {
     return booking;
   },
 
-  async createIncomingDriverJob(driverId: string): Promise<BookingContract> {
+  async createIncomingDriverJob(driverId: string): Promise<BookingContract | null> {
     if (hasRemoteApi()) {
-      return requestApi<BookingContract>('/driver/jobs/incoming', {
+      return requestApi<BookingContract | null>('/driver/jobs/incoming', {
         method: 'POST',
         token: getBearerToken(),
         body: { driverId }
@@ -1052,7 +1075,7 @@ export const bookingApi = {
       destinationLocation: serviceType === 'WASH' ? null : '2029 Future Blvd',
       destinationCoordinates:
         serviceType === 'WASH' ? null : textToGeoPoint('2029 Future Blvd', 303),
-      paymentMethod: 'Visa •••• 4242',
+      paymentMethod: 'paystack',
       price: 42,
       ecoPoints: 50,
       status: 'PENDING',
@@ -1293,6 +1316,64 @@ export const bookingApi = {
     await delay(100);
     const state = loadState();
     return state.bookings.filter((booking) => booking.customerId === customerId);
+  },
+
+  async cancellationPolicy(bookingId: string) {
+    if (hasRemoteApi()) {
+      return requestApi<{ refundable: boolean; feeCents: number; summary: string }>(
+        `/bookings/${encodeURIComponent(bookingId)}/policy`,
+        { token: getBearerToken() }
+      );
+    }
+    await delay(80);
+    const booking = loadState().bookings.find((item) => item.id === bookingId);
+    if (!booking) throw new Error('Booking not found');
+    if (booking.status === 'PENDING' || booking.status === 'CONFIRMED') {
+      return { refundable: true, feeCents: 0, summary: 'Free cancellation before the operator is en route.' };
+    }
+    if (booking.status === 'EN_ROUTE' || booking.status === 'ARRIVED') {
+      return { refundable: true, feeCents: 2500, summary: 'R25.00 cancellation fee after dispatch.' };
+    }
+    return { refundable: false, feeCents: 0, summary: 'This booking is no longer refundable.' };
+  },
+
+  async cancelBooking(bookingId: string, reason?: string): Promise<BookingContract> {
+    if (hasRemoteApi()) {
+      return requestApi<BookingContract>(`/bookings/${encodeURIComponent(bookingId)}/cancel`, {
+        method: 'POST',
+        token: getBearerToken(),
+        body: { reason }
+      });
+    }
+    const updated = await this.updateBookingStatus(bookingId, 'CANCELLED', 'customer', {
+      reason: reason || 'Customer cancellation',
+      source: 'customer_app'
+    });
+    if (!updated) throw new Error('Booking not found');
+    return updated;
+  },
+
+  async rescheduleBooking(bookingId: string, scheduledAt: string): Promise<BookingContract> {
+    if (hasRemoteApi()) {
+      return requestApi<BookingContract>(`/bookings/${encodeURIComponent(bookingId)}/reschedule`, {
+        method: 'POST',
+        token: getBearerToken(),
+        body: { scheduledAt }
+      });
+    }
+    await delay(100);
+    const state = loadState();
+    const index = state.bookings.findIndex((item) => item.id === bookingId);
+    if (index < 0) throw new Error('Booking not found');
+    state.bookings[index] = {
+      ...state.bookings[index],
+      scheduledAt,
+      status: 'PENDING',
+      driverId: undefined,
+      updatedAt: nowIso()
+    };
+    saveState(state);
+    return state.bookings[index];
   }
 };
 
@@ -1303,6 +1384,8 @@ export const trackingApi = {
     lng: number;
     heading?: number | null;
     speedKph?: number | null;
+    accuracyM?: number | null;
+    recordedAt?: string;
   }): Promise<DriverProfile | null> {
     if (hasRemoteApi()) {
       return requestApi<DriverProfile | null>('/driver/location', {
@@ -1356,6 +1439,14 @@ export const trackingApi = {
           null),
       driverId: booking.driverId,
       driverName: driver?.name,
+      driverPhone: driver?.phone ?? null,
+      driverVehicle: driver?.vehicle ?? null,
+      driverPlateNumber: driver?.plateNumber ?? null,
+      driverRating: driver?.rating ?? null,
+      driverAvatarUrl: driver?.avatarUrl ?? null,
+      driverCompletedJobs: state.bookings.filter(
+        (item) => item.driverId === driver?.id && item.status === 'COMPLETED'
+      ).length,
       driverLocation: driver?.lastKnownLocation ?? null
     };
   },
@@ -2407,11 +2498,7 @@ export const notificationApi = {
     type?: NotificationType;
   }) {
     if (hasRemoteApi()) {
-      await requestApi<void>('/notifications', {
-        method: 'POST',
-        token: getBearerToken(),
-        body: input
-      });
+      // Production notifications are emitted by trusted server-side state changes.
       return;
     }
 
@@ -2423,7 +2510,12 @@ export const notificationApi = {
       input.message,
       input.type ?? 'info'
     );
-  }
+  },
+  markRead: (notificationId: string) => requestApi<void>(`/notifications/${encodeURIComponent(notificationId)}/read`, { method: 'PATCH', token: getBearerToken() }),
+  markAllRead: () => requestApi<void>('/notifications/read-all', { method: 'POST', token: getBearerToken() }),
+  remove: (notificationId: string) => requestApi<void>(`/notifications/${encodeURIComponent(notificationId)}`, { method: 'DELETE', token: getBearerToken() }),
+  preferences: () => requestApi<{ pushEnabled: boolean; emailEnabled: boolean; smsEnabled: boolean; marketing: boolean }>('/notifications/preferences', { token: getBearerToken() }),
+  updatePreferences: (body: Record<string, boolean>) => requestApi<Record<string, unknown>>('/notifications/preferences', { method: 'PATCH', token: getBearerToken(), body })
 };
 
 export const specialsApi = {
@@ -2498,8 +2590,30 @@ export const paymentsApi = {
   async wallet() {
     return requestApi<{
       walletBalance: number;
-      transactions: Array<{ id: string; amountZar: number; type: string; createdAt: string }>;
+      withdrawableBalance: number;
+      promotionalBalance: number;
+      currency: 'ZAR';
+      transactions: Array<{
+        id: string;
+        amountZar: number;
+        type: string;
+        reference: string | null;
+        note: string | null;
+        createdAt: string;
+      }>;
     }>('/wallet', { token: getBearerToken() });
+  },
+  async list() {
+    return requestApi<Array<{
+      paymentId: string;
+      bookingId: string | null;
+      provider: string;
+      status: string;
+      amountZar: number;
+      currency: string;
+      externalRef: string | null;
+      createdAt: string;
+    }>>('/payments', { token: getBearerToken() });
   }
 };
 
@@ -2509,3 +2623,285 @@ export const catalogApi = {
   }
 };
 
+export const accountApi = {
+  async requestPasswordReset(email: string) {
+    requireRemoteOrMock();
+    if (!hasRemoteApi()) return { message: 'Demo reset request accepted' };
+    return requestApi<{ message: string }>('/auth/password-reset/request', {
+      method: 'POST',
+      body: { email },
+      retryOnAuth: false
+    });
+  },
+  async confirmPasswordReset(token: string, password: string) {
+    return requestApi<{ message: string }>('/auth/password-reset/confirm', {
+      method: 'POST',
+      body: { token, password },
+      retryOnAuth: false
+    });
+  },
+  async verifyEmail(token: string) {
+    return requestApi<{ message: string }>('/auth/verify-email', {
+      method: 'POST',
+      body: { token },
+      retryOnAuth: false
+    });
+  },
+  async requestPhoneVerification(phone: string) {
+    return requestApi<{ message: string; demoCode?: string }>('/auth/phone/request', {
+      method: 'POST',
+      token: getBearerToken(),
+      body: { phone }
+    });
+  },
+  async verifyPhone(phone: string, code: string) {
+    return requestApi<{ message: string }>('/auth/phone/verify', {
+      method: 'POST',
+      token: getBearerToken(),
+      body: { phone, code }
+    });
+  },
+  async sessions() {
+    return requestApi<Array<{
+      id: string;
+      deviceLabel: string | null;
+      ipAddress: string | null;
+      createdAt: string;
+      expiresAt: string;
+      current: boolean;
+    }>>('/auth/sessions', { token: getBearerToken() });
+  },
+  async revokeSession(sessionId: string) {
+    return requestApi<void>(`/auth/sessions/${encodeURIComponent(sessionId)}`, {
+      method: 'DELETE',
+      token: getBearerToken()
+    });
+  },
+  async logoutAll() {
+    await requestApi<void>('/auth/logout-all', { method: 'POST', token: getBearerToken() });
+    clearSession();
+  }
+};
+
+export const passkeyApi = {
+  authenticationOptions: () =>
+    requestApi<{ options: unknown; challengeToken: string }>('/auth/passkeys/authentication/options', {
+      method: 'POST', retryOnAuth: false
+    }),
+  async verifyAuthentication(challengeToken: string, response: unknown) {
+    const result = await requestApi<{ session: AuthSession; profile: OpsAdminProfile }>('/auth/passkeys/authentication/verify', {
+      method: 'POST', body: { challengeToken, response }, retryOnAuth: false
+    });
+    saveSession(result.session);
+    saveOpsAdminProfile(result.profile);
+    return result.profile;
+  },
+  registrationOptions: () =>
+    requestApi<{ options: unknown; challengeToken: string }>('/auth/passkeys/registration/options', {
+      method: 'POST', token: getBearerToken()
+    }),
+  async verifyRegistration(challengeToken: string, response: unknown) {
+    const result = await requestApi<{
+      verified: boolean;
+      credentialId: string;
+      session: AuthSession;
+      profile: OpsAdminProfile;
+    }>('/auth/passkeys/registration/verify', {
+      method: 'POST', token: getBearerToken(), body: { challengeToken, response }
+    });
+    saveSession(result.session);
+    saveOpsAdminProfile({ ...result.profile, mfaEnrollmentRequired: false });
+    return { ...result, profile: { ...result.profile, mfaEnrollmentRequired: false } };
+  },
+  list: () => requestApi<Array<{ id: string; credentialId: string; transports: string[]; createdAt: string }>>('/auth/passkeys', { token: getBearerToken() }),
+  remove: (id: string) => requestApi<void>(`/auth/passkeys/${encodeURIComponent(id)}`, { method: 'DELETE', token: getBearerToken() })
+};
+
+export const mfaApi = {
+  beginSetup: () =>
+    requestApi<{ status: string; otpauthUrl: string; secret: string; message: string }>('/auth/mfa/setup', {
+      method: 'POST', token: getBearerToken()
+    }),
+  async verifySetup(token: string) {
+    const result = await requestApi<{
+      enabled: boolean;
+      backupCodes: string[];
+      session: AuthSession;
+      profile: OpsAdminProfile;
+    }>('/auth/mfa/verify', {
+      method: 'POST', token: getBearerToken(), body: { token }
+    });
+    const profile = { ...result.profile, mfaEnrollmentRequired: false };
+    saveSession(result.session);
+    saveOpsAdminProfile(profile);
+    return { ...result, profile };
+  }
+};
+
+export const complaintApi = {
+  create: (body: {
+    bookingId?: string;
+    category: 'QUALITY' | 'DAMAGE' | 'LATENESS' | 'CONDUCT' | 'BILLING' | 'REWASH' | 'OTHER';
+    body: string;
+  }) => requestApi<Record<string, unknown>>('/complaints', {
+    method: 'POST', token: getBearerToken(), body
+  }),
+  list: () => requestApi<Array<Record<string, unknown>>>('/complaints', { token: getBearerToken() }),
+  update: (complaintId: string, body: { status: 'IN_REVIEW' | 'ESCALATED' | 'RESOLVED' | 'REJECTED'; resolution?: string }) =>
+    requestApi<Record<string, unknown>>(`/complaints/${encodeURIComponent(complaintId)}`, {
+      method: 'PATCH', token: getBearerToken(), body
+    })
+};
+
+export const customerAccountApi = {
+  profile: () => requestApi<Record<string, unknown>>('/customers/me', { token: getBearerToken() }),
+  updateProfile: (body: { name?: string; phone?: string }) =>
+    requestApi<Record<string, unknown>>('/customers/me', { method: 'PATCH', token: getBearerToken(), body }),
+  vehicles: () => requestApi<Array<Record<string, unknown>>>('/customers/me/vehicles', { token: getBearerToken() }),
+  createVehicle: (body: Record<string, unknown>) =>
+    requestApi<Record<string, unknown>>('/customers/me/vehicles', { method: 'POST', token: getBearerToken(), body }),
+  updateVehicle: (id: string, body: Record<string, unknown>) =>
+    requestApi<Record<string, unknown>>(`/customers/me/vehicles/${encodeURIComponent(id)}`, { method: 'PATCH', token: getBearerToken(), body }),
+  deleteVehicle: (id: string) =>
+    requestApi<void>(`/customers/me/vehicles/${encodeURIComponent(id)}`, { method: 'DELETE', token: getBearerToken() }),
+  addresses: () => requestApi<Array<Record<string, unknown>>>('/customers/me/addresses', { token: getBearerToken() }),
+  createAddress: (body: Record<string, unknown>) =>
+    requestApi<Record<string, unknown>>('/customers/me/addresses', { method: 'POST', token: getBearerToken(), body }),
+  updateAddress: (id: string, body: Record<string, unknown>) =>
+    requestApi<Record<string, unknown>>(`/customers/me/addresses/${encodeURIComponent(id)}`, { method: 'PATCH', token: getBearerToken(), body }),
+  deleteAddress: (id: string) =>
+    requestApi<void>(`/customers/me/addresses/${encodeURIComponent(id)}`, { method: 'DELETE', token: getBearerToken() })
+};
+
+export const driverOperationsApi = {
+  setOnline: (online: boolean) =>
+    requestApi<{ online: boolean }>('/driver/online', { method: 'POST', token: getBearerToken(), body: { online } }),
+  documents: () => requestApi<Array<Record<string, unknown>>>('/driver/documents', { token: getBearerToken() }),
+  uploadDocument: (body: { kind: string; dataUrl: string; expiresAt?: string }) =>
+    requestApi<Record<string, unknown>>('/driver/documents', { method: 'POST', token: getBearerToken(), body }),
+  downloadDocument: (documentId: string, kind: string) =>
+    downloadApiFile(`/driver/documents/${encodeURIComponent(documentId)}/download`, `${kind.toLowerCase()}.document`),
+  availability: () => requestApi<Array<Record<string, unknown>>>('/driver/availability', { token: getBearerToken() }),
+  updateAvailability: (slots: Array<Record<string, unknown>>) =>
+    requestApi<Array<Record<string, unknown>>>('/driver/availability', { method: 'PUT', token: getBearerToken(), body: { slots } }),
+  payoutSummary: () => requestApi<Record<string, unknown>>('/payouts/me', { token: getBearerToken() }),
+  payoutAccount: () => requestApi<Record<string, unknown> | null>('/payouts/account', { token: getBearerToken() }),
+  updatePayoutAccount: (body: { bankCode: string; accountNumber: string; accountName: string }) =>
+    requestApi<Record<string, unknown>>('/payouts/account', { method: 'PUT', token: getBearerToken(), body }),
+  acceptJob: (bookingId: string) =>
+    requestApi<BookingContract>(`/driver/jobs/${encodeURIComponent(bookingId)}/accept`, { method: 'POST', token: getBearerToken() }),
+  declineJob: (bookingId: string, reason: string) =>
+    requestApi<BookingContract | null>(`/driver/jobs/${encodeURIComponent(bookingId)}/decline`, { method: 'POST', token: getBearerToken(), body: { reason } }),
+  emergency: (body: Record<string, unknown>) =>
+    requestApi<{ incidentId: string; status: string }>('/driver/emergency', { method: 'POST', token: getBearerToken(), body })
+};
+
+export const bookingProofApi = {
+  evidence: (bookingId: string) =>
+    requestApi<Array<Record<string, unknown>>>(`/bookings/${encodeURIComponent(bookingId)}/evidence`, { token: getBearerToken() }),
+  uploadEvidence: (bookingId: string, body: Record<string, unknown>) =>
+    requestApi<Record<string, unknown>>(`/bookings/${encodeURIComponent(bookingId)}/evidence`, { method: 'POST', token: getBearerToken(), body }),
+  issueCompletionPin: (bookingId: string) =>
+    requestApi<{ pin: string; expiresWhen: string }>(`/bookings/${encodeURIComponent(bookingId)}/completion-pin`, { method: 'POST', token: getBearerToken() }),
+  verifyCompletionPin: (bookingId: string, pin: string) =>
+    requestApi<{ verified: boolean }>(`/bookings/${encodeURIComponent(bookingId)}/completion-pin/verify`, { method: 'POST', token: getBearerToken(), body: { pin } }),
+  checklist: (bookingId: string) =>
+    requestApi<Record<string, unknown> | null>(`/bookings/${encodeURIComponent(bookingId)}/checklist`, { token: getBearerToken() }),
+  updateChecklist: (bookingId: string, body: Record<string, unknown>) =>
+    requestApi<Record<string, unknown>>(`/bookings/${encodeURIComponent(bookingId)}/checklist`, { method: 'PATCH', token: getBearerToken(), body }),
+  messages: (bookingId: string) =>
+    requestApi<Array<Record<string, unknown>>>(`/bookings/${encodeURIComponent(bookingId)}/messages`, { token: getBearerToken() }),
+  sendMessage: (bookingId: string, body: string) =>
+    requestApi<Record<string, unknown>>(`/bookings/${encodeURIComponent(bookingId)}/messages`, { method: 'POST', token: getBearerToken(), body: { body } }),
+  rate: (bookingId: string, stars: number, comment?: string) =>
+    requestApi<Record<string, unknown>>(`/bookings/${encodeURIComponent(bookingId)}/rating`, { method: 'POST', token: getBearerToken(), body: { stars, comment } })
+};
+
+export const geoApi = {
+  autocomplete: (query: string) =>
+    requestApi<Array<{ id: string; label: string; lat: number | null; lng: number | null }>>(`/geo/autocomplete?q=${encodeURIComponent(query)}`, { token: getBearerToken() }),
+  availability: (lat: number, lng: number, scheduledAt?: string) =>
+    requestApi<{ available: boolean; area: Record<string, unknown> }>('/geo/availability', { method: 'POST', token: getBearerToken(), body: { lat, lng, scheduledAt } }),
+  route: (from: { lat: number; lng: number }, to: { lat: number; lng: number }) =>
+    requestApi<{ distanceKm: number; etaMinutes: number }>('/geo/route', { method: 'POST', token: getBearerToken(), body: { from, to } })
+};
+
+export const privacyApi = {
+  requests: () => requestApi<Array<Record<string, unknown>>>('/privacy/requests', { token: getBearerToken() }),
+  createRequest: (kind: 'EXPORT' | 'DELETE') =>
+    requestApi<Record<string, unknown>>('/privacy/requests', { method: 'POST', token: getBearerToken(), body: { kind } }),
+  consents: () => requestApi<Array<Record<string, unknown>>>('/privacy/consents', { token: getBearerToken() }),
+  setConsent: (purpose: string, granted: boolean, version: string) =>
+    requestApi<Record<string, unknown>>('/privacy/consents', { method: 'POST', token: getBearerToken(), body: { purpose, granted, version } }),
+  downloadExport: (requestId: string) =>
+    downloadApiFile(`/privacy/requests/${encodeURIComponent(requestId)}/download`, 'dripless-data-export.json')
+};
+
+export const invoicesApi = {
+  list: () => requestApi<Array<Record<string, unknown>>>('/invoices', { token: getBearerToken() }),
+  download: (invoiceId: string, number: string) =>
+    downloadApiFile(`/invoices/${encodeURIComponent(invoiceId)}/download`, `${number}.pdf`)
+};
+
+export function subscribePlatformEvents(
+  onEvent: (event: { id: string; type: string; at: string; payload: Record<string, unknown> }) => void,
+  onState?: (state: 'connected' | 'reconnecting' | 'stopped') => void
+) {
+  const controller = new AbortController();
+  let stopped = false;
+  let lastEventId = typeof sessionStorage !== 'undefined' ? sessionStorage.getItem('dripless_last_event_id') || '' : '';
+  const run = async () => {
+    let backoff = 1000;
+    while (!stopped) {
+      try {
+        const baseUrl = getApiBaseUrl();
+        const token = getBearerToken();
+        if (!baseUrl || !token) return;
+        const response = await fetch(`${baseUrl}/events/stream`, {
+          headers: {
+            Authorization: `Bearer ${token}`,
+            Accept: 'text/event-stream',
+            ...(lastEventId ? { 'Last-Event-ID': lastEventId } : {})
+          },
+          signal: controller.signal
+        });
+        if (!response.ok || !response.body) throw new Error(`Event stream failed (${response.status})`);
+        onState?.('connected');
+        backoff = 1000;
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+        while (!stopped) {
+          const chunk = await reader.read();
+          if (chunk.done) break;
+          buffer += decoder.decode(chunk.value, { stream: true });
+          let boundary = buffer.indexOf('\n\n');
+          while (boundary >= 0) {
+            const frame = buffer.slice(0, boundary);
+            buffer = buffer.slice(boundary + 2);
+            const id = frame.match(/^id:\s*(.+)$/m)?.[1]?.trim();
+            const data = frame.match(/^data:\s*(.+)$/m)?.[1];
+            if (id && data) {
+              const event = JSON.parse(data) as { id: string; type: string; at: string; payload: Record<string, unknown> };
+              lastEventId = id;
+              sessionStorage.setItem('dripless_last_event_id', id);
+              onEvent(event);
+            }
+            boundary = buffer.indexOf('\n\n');
+          }
+        }
+      } catch (error) {
+        if (stopped || (error instanceof DOMException && error.name === 'AbortError')) break;
+      }
+      onState?.('reconnecting');
+      await delay(backoff);
+      backoff = Math.min(30_000, backoff * 2);
+    }
+  };
+  void run();
+  return () => {
+    stopped = true;
+    controller.abort();
+    onState?.('stopped');
+  };
+}

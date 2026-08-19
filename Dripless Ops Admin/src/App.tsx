@@ -18,11 +18,13 @@ import { InboxRoutePage } from './pages/dashboard/InboxRoutePage';
 import { CommunicationsRoutePage } from './pages/dashboard/CommunicationsRoutePage';
 import { AuditRoutePage } from './pages/dashboard/AuditRoutePage';
 import { ReportsRoutePage } from './pages/dashboard/ReportsRoutePage';
+import { MfaEnrollmentPage } from './pages/MfaEnrollmentPage';
 
 const ProtectedRoute = ({ children }: { children: JSX.Element }) => {
-  const { isAuthenticated, isLoading } = useOpsAuth();
+  const { admin, isAuthenticated, isLoading } = useOpsAuth();
   if (isLoading) return <div className="container">Loading...</div>;
   if (!isAuthenticated) return <Navigate to={OPS_ADMIN_ROUTES.LOGIN} replace />;
+  if (admin?.mfaEnrollmentRequired) return <MfaEnrollmentPage />;
   return children;
 };
 

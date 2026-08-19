@@ -35,6 +35,8 @@ export interface Driver {
   ecoPoints: number;
   memberSince: string;
   avatarUrl?: string;
+  status?: string;
+  verificationStatus?: 'PENDING' | 'VERIFIED' | 'REJECTED' | 'SUSPENDED' | 'EXPIRED';
 }
 
 export interface Booking extends Job {

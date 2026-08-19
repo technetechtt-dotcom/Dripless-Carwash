@@ -1,4 +1,4 @@
-import React, { useState, Children } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   ArrowLeftIcon,
@@ -12,6 +12,7 @@ import {
 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'sonner';
+import { customerAccountApi } from '@shared/api';
 const container = {
   hidden: {
     opacity: 0
@@ -45,39 +46,36 @@ interface Car {
   year: string;
   color: string;
   licensePlate: string;
+  sizeClass: 'STANDARD' | 'SEDAN' | 'SUV' | 'BAKKIE' | 'TRUCK';
   isDefault: boolean;
 }
 const MyCars = () => {
   const navigate = useNavigate();
   const [showAddCar, setShowAddCar] = useState(false);
   const [editingCar, setEditingCar] = useState<Car | null>(null);
-  const [cars, setCars] = useState<Car[]>([
-  {
-    id: '1',
-    make: 'Toyota',
-    model: 'Corolla',
-    year: '2022',
-    color: 'Silver',
-    licensePlate: 'CA 123-456',
-    isDefault: true
-  },
-  {
-    id: '2',
-    make: 'BMW',
-    model: '320i',
-    year: '2021',
-    color: 'Black',
-    licensePlate: 'GP 789-012',
-    isDefault: false
-  }]
-  );
+  const [cars, setCars] = useState<Car[]>([]);
   const [formData, setFormData] = useState({
     make: '',
     model: '',
     year: '',
     color: '',
-    licensePlate: ''
+    licensePlate: '',
+    sizeClass: 'STANDARD' as Car['sizeClass']
   });
+  const loadCars = async () => {
+    const rows = await customerAccountApi.vehicles();
+    setCars(rows.map((row) => ({
+      id: String(row.id),
+      make: String(row.make || ''),
+      model: String(row.model || ''),
+      year: row.year ? String(row.year) : '',
+      color: String(row.colour || ''),
+      licensePlate: String(row.plate || ''),
+      sizeClass: String(row.sizeClass || 'STANDARD') as Car['sizeClass'],
+      isDefault: Boolean(row.isDefault)
+    })));
+  };
+  useEffect(() => { void loadCars().catch((error) => toast.error(error instanceof Error ? error.message : 'Could not load vehicles')); }, []);
   const colorOptions = [
   'White',
   'Black',
@@ -96,53 +94,55 @@ const MyCars = () => {
       model: '',
       year: '',
       color: '',
-      licensePlate: ''
+      licensePlate: '',
+      sizeClass: 'STANDARD'
     });
   };
-  const handleAddCar = () => {
+  const handleAddCar = async () => {
     if (!formData.make || !formData.model || !formData.licensePlate) {
       toast.error('Please fill in make, model, and license plate');
       return;
     }
-    const newCar: Car = {
-      id: `car-${Date.now()}`,
-      ...formData,
-      isDefault: cars.length === 0
-    };
-    setCars((prev) => [...prev, newCar]);
-    resetForm();
-    setShowAddCar(false);
-    toast.success(`${formData.make} ${formData.model} added!`);
+    try {
+      await customerAccountApi.createVehicle({
+        label: `${formData.make} ${formData.model}`,
+        make: formData.make,
+        model: formData.model,
+        year: formData.year ? Number(formData.year) : undefined,
+        plate: formData.licensePlate,
+        colour: formData.color || undefined,
+        sizeClass: formData.sizeClass,
+        isDefault: cars.length === 0
+      });
+      await loadCars();
+      resetForm();
+      setShowAddCar(false);
+      toast.success(`${formData.make} ${formData.model} added!`);
+    } catch (error) { toast.error(error instanceof Error ? error.message : 'Could not add vehicle'); }
   };
-  const handleUpdateCar = () => {
+  const handleUpdateCar = async () => {
     if (!editingCar) return;
-    setCars((prev) =>
-    prev.map((c) =>
-    c.id === editingCar.id ?
-    {
-      ...c,
-      ...formData
-    } :
-    c
-    )
-    );
-    resetForm();
-    setEditingCar(null);
-    toast.success('Car updated!');
+    try {
+      await customerAccountApi.updateVehicle(editingCar.id, {
+        label: `${formData.make} ${formData.model}`,
+        make: formData.make,
+        model: formData.model,
+        year: formData.year ? Number(formData.year) : null,
+        plate: formData.licensePlate,
+        colour: formData.color || null,
+        sizeClass: formData.sizeClass
+      });
+      await loadCars(); resetForm(); setEditingCar(null); toast.success('Car updated!');
+    } catch (error) { toast.error(error instanceof Error ? error.message : 'Could not update vehicle'); }
   };
-  const handleDeleteCar = (id: string) => {
-    const car = cars.find((c) => c.id === id);
-    setCars((prev) => prev.filter((c) => c.id !== id));
-    toast.info(`${car?.make} ${car?.model} removed`);
+  const handleDeleteCar = async (id: string) => {
+    if (!window.confirm('Remove this vehicle?')) return;
+    try { await customerAccountApi.deleteVehicle(id); await loadCars(); toast.info('Vehicle removed'); }
+    catch (error) { toast.error(error instanceof Error ? error.message : 'Could not remove vehicle'); }
   };
-  const handleSetDefault = (id: string) => {
-    setCars((prev) =>
-    prev.map((c) => ({
-      ...c,
-      isDefault: c.id === id
-    }))
-    );
-    toast.success('Default car updated');
+  const handleSetDefault = async (id: string) => {
+    try { await customerAccountApi.updateVehicle(id, { isDefault: true }); await loadCars(); toast.success('Default car updated'); }
+    catch (error) { toast.error(error instanceof Error ? error.message : 'Could not change default'); }
   };
   const openEdit = (car: Car) => {
     setFormData({
@@ -150,7 +150,8 @@ const MyCars = () => {
       model: car.model,
       year: car.year,
       color: car.color,
-      licensePlate: car.licensePlate
+      licensePlate: car.licensePlate,
+      sizeClass: car.sizeClass
     });
     setEditingCar(car);
   };
@@ -273,7 +274,7 @@ const MyCars = () => {
               whileTap={{
                 scale: 0.96
               }}
-              onClick={() => handleSetDefault(car.id)}
+              onClick={() => void handleSetDefault(car.id)}
               className="flex-1 py-2 text-xs font-bold text-eco-600 dark:text-eco-400 bg-eco-50 dark:bg-eco-900/20 rounded-lg flex items-center justify-center gap-1">
 
                     <CheckCircleIcon size={14} />
@@ -294,7 +295,7 @@ const MyCars = () => {
               whileTap={{
                 scale: 0.96
               }}
-              onClick={() => handleDeleteCar(car.id)}
+              onClick={() => void handleDeleteCar(car.id)}
               className="py-2 px-3 text-xs font-bold text-red-500 bg-red-50 dark:bg-red-900/20 rounded-lg flex items-center justify-center">
 
                   <TrashIcon size={14} />
@@ -476,13 +477,19 @@ const MyCars = () => {
                   )}
                   </div>
                 </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wide mb-2 ml-1">Vehicle size</label>
+                  <select value={formData.sizeClass} onChange={(e) => setFormData({ ...formData, sizeClass: e.target.value as Car['sizeClass'] })} className="w-full p-3 bg-white/70 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 rounded-xl dark:text-white">
+                    <option value="STANDARD">Standard</option><option value="SEDAN">Sedan</option><option value="SUV">SUV</option><option value="BAKKIE">Bakkie</option><option value="TRUCK">Truck</option>
+                  </select>
+                </div>
               </div>
 
               <motion.button
               whileTap={{
                 scale: 0.96
               }}
-              onClick={editingCar ? handleUpdateCar : handleAddCar}
+              onClick={() => void (editingCar ? handleUpdateCar() : handleAddCar())}
               className="btn-primary w-full py-4 font-bold mt-6">
 
                 {editingCar ? 'Update Car' : 'Add Car'}

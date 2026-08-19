@@ -1,20 +1,19 @@
 import rateLimit from 'express-rate-limit';
 import { getRedis } from '../lib/redis.js';
 
-function createRedisStore(prefix: string) {
+function createRedisStore(prefix: string, windowMs: number) {
   return {
     async increment(key: string) {
       const redis = await getRedis();
       const namespaced = `${prefix}:${key}`;
       const totalHits = await redis.incr(`rl:${namespaced}`);
-      if (totalHits === 1) await redis.expire(`rl:${namespaced}`, 60);
-      return { totalHits, resetTime: new Date(Date.now() + 60_000) };
+      if (totalHits === 1) await redis.expire(`rl:${namespaced}`, Math.ceil(windowMs / 1000));
+      return { totalHits, resetTime: new Date(Date.now() + windowMs) };
     },
     async decrement(key: string) {
       const redis = await getRedis();
       const namespaced = `${prefix}:${key}`;
-      const current = Number((await redis.get(`rl:${namespaced}`)) || '1');
-      await redis.set(`rl:${namespaced}`, String(Math.max(0, current - 1)));
+      await redis.decr(`rl:${namespaced}`);
     },
     async resetKey(key: string) {
       const redis = await getRedis();
@@ -28,7 +27,7 @@ export const authRateLimiter = rateLimit({
   max: 30,
   standardHeaders: true,
   legacyHeaders: false,
-  store: createRedisStore('auth'),
+  store: createRedisStore('auth', 15 * 60 * 1000),
   validate: { xForwardedForHeader: false, singleCount: false },
   message: { message: 'Too many authentication attempts. Try again later.' }
 });
@@ -38,7 +37,7 @@ export const apiRateLimiter = rateLimit({
   max: 120,
   standardHeaders: true,
   legacyHeaders: false,
-  store: createRedisStore('api'),
+  store: createRedisStore('api', 60 * 1000),
   validate: { xForwardedForHeader: false, singleCount: false },
   message: { message: 'Too many requests. Slow down.' }
 });

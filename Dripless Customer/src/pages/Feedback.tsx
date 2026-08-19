@@ -1,4 +1,4 @@
-import React, { useState, Children } from 'react';
+import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   ArrowLeftIcon,
@@ -7,11 +7,11 @@ import {
   SendIcon,
   StarIcon,
   CheckCircleIcon,
-  CameraIcon,
-  XIcon } from
+  CameraIcon } from
 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'sonner';
+import { complaintApi } from '@shared/api';
 const container = {
   hidden: {
     opacity: 0
@@ -53,6 +53,7 @@ const Feedback = () => {
     '');
   const [bugSteps, setBugSteps] = useState('');
   const [showSuccess, setShowSuccess] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
   const feedbackCategories = [
   'App Experience',
   'Service Quality',
@@ -61,40 +62,59 @@ const Feedback = () => {
   'Feature Request',
   'Other'];
 
-  const handleSubmitFeedback = () => {
+  const handleSubmitFeedback = async () => {
     if (!feedbackRating) {
       toast.error('Please select a rating');
       return;
     }
-    if (!feedbackMessage.trim()) {
-      toast.error('Please enter your feedback');
+    if (feedbackMessage.trim().length < 10) {
+      toast.error('Please enter at least 10 characters');
       return;
     }
-    setShowSuccess(true);
-    setTimeout(() => {
-      setShowSuccess(false);
+    const category = feedbackCategory === 'Service Quality' ? 'QUALITY' : feedbackCategory === 'Payment' ? 'BILLING' : 'OTHER';
+    setSubmitting(true);
+    try {
+      await complaintApi.create({
+        category,
+        body: `Rating: ${feedbackRating}/5${feedbackCategory ? `\nCategory: ${feedbackCategory}` : ''}\n\n${feedbackMessage.trim()}`
+      });
+      setShowSuccess(true);
       setFeedbackRating(0);
       setFeedbackCategory('');
       setFeedbackMessage('');
-    }, 2500);
+      setTimeout(() => setShowSuccess(false), 2500);
+    } catch (cause) {
+      toast.error(cause instanceof Error ? cause.message : 'Could not submit feedback');
+    } finally {
+      setSubmitting(false);
+    }
   };
-  const handleSubmitBug = () => {
+  const handleSubmitBug = async () => {
     if (!bugTitle.trim()) {
       toast.error('Please enter a bug title');
       return;
     }
-    if (!bugDescription.trim()) {
-      toast.error('Please describe the bug');
+    if (bugDescription.trim().length < 10) {
+      toast.error('Please describe the bug in at least 10 characters');
       return;
     }
-    setShowSuccess(true);
-    setTimeout(() => {
-      setShowSuccess(false);
+    setSubmitting(true);
+    try {
+      await complaintApi.create({
+        category: 'OTHER',
+        body: `Bug: ${bugTitle.trim()}\nSeverity: ${bugSeverity || 'not specified'}\n\n${bugDescription.trim()}${bugSteps.trim() ? `\n\nSteps to reproduce:\n${bugSteps.trim()}` : ''}`
+      });
+      setShowSuccess(true);
       setBugTitle('');
       setBugDescription('');
       setBugSeverity('');
       setBugSteps('');
-    }, 2500);
+      setTimeout(() => setShowSuccess(false), 2500);
+    } catch (cause) {
+      toast.error(cause instanceof Error ? cause.message : 'Could not submit bug report');
+    } finally {
+      setSubmitting(false);
+    }
   };
   return (
     <motion.div
@@ -241,11 +261,12 @@ const Feedback = () => {
               whileTap={{
                 scale: 0.96
               }}
-              onClick={handleSubmitFeedback}
+              onClick={() => void handleSubmitFeedback()}
+              disabled={submitting}
               className="btn-primary w-full py-4 font-bold flex items-center justify-center gap-2">
 
                 <SendIcon size={18} />
-                Submit Feedback
+                {submitting ? 'Submitting…' : 'Submit Feedback'}
               </motion.button>
             </motion.div> :
 
@@ -342,11 +363,12 @@ const Feedback = () => {
               whileTap={{
                 scale: 0.96
               }}
-              onClick={handleSubmitBug}
+              onClick={() => void handleSubmitBug()}
+              disabled={submitting}
               className="w-full py-4 font-bold flex items-center justify-center gap-2 bg-gradient-to-r from-red-500 to-rose-600 text-white shadow-lg shadow-red-500/20 rounded-xl">
 
                 <BugIcon size={18} />
-                Submit Bug Report
+                {submitting ? 'Submitting…' : 'Submit Bug Report'}
               </motion.button>
             </motion.div>
           }

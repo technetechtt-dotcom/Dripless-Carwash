@@ -1,0 +1,52 @@
+name: Non-production Restore Drill
+
+on:
+  workflow_dispatch:
+    inputs:
+      backup_object:
+        description: Full S3 URI of the production backup object
+        required: true
+        type: string
+      confirm:
+        description: Type RESTORE_NON_PRODUCTION
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  restore:
+    if: inputs.confirm == 'RESTORE_NON_PRODUCTION'
+    runs-on: ubuntu-latest
+    environment: restore-drill
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: backend-api/package-lock.json
+      - name: Restore only into the isolated drill database
+        env:
+          RESTORE_DATABASE_URL: ${{ secrets.RESTORE_DATABASE_URL }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: ${{ secrets.AWS_REGION }}
+        run: |
+          set -euo pipefail
+          test -n "$RESTORE_DATABASE_URL"
+          [[ "$RESTORE_DATABASE_URL" == *"restore"* || "$RESTORE_DATABASE_URL" == *"drill"* ]]
+          aws s3 cp "${{ inputs.backup_object }}" restore.dump
+          docker run --rm -e RESTORE_DATABASE_URL -v "$PWD:/backup" postgres:17 \
+            pg_restore --clean --if-exists --no-owner --no-acl --dbname="$RESTORE_DATABASE_URL" /backup/restore.dump
+      - name: Verify restored schema and tests
+        working-directory: backend-api
+        env:
+          DATABASE_URL: ${{ secrets.RESTORE_DATABASE_URL }}
+          NODE_ENV: test
+          CORS_ORIGINS: http://localhost:5173
+        run: |
+          npm ci
+          npx prisma migrate status
+          npm run test

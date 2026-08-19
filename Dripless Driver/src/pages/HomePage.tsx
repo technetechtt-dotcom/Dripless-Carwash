@@ -11,11 +11,13 @@ import { GlassButton } from '../components/ui/GlassButton';
 import { PageContainer } from '../components/ui/PageContainer';
 import { specialsApi } from '@shared/api';
 import type { OpsSpecial } from '@shared/types';
+import { useToast } from '../contexts/ToastContext';
 export function HomePage() {
   const { driver } = useDriverAuth();
   const [liveSpecials, setLiveSpecials] = useState<OpsSpecial[]>([]);
   const [redeemCode, setRedeemCode] = useState('');
   const [redeemFeedback, setRedeemFeedback] = useState('');
+  const { showToast } = useToast();
   const {
     isOnline,
     setIsOnline,
@@ -233,7 +235,7 @@ export function HomePage() {
 
                 <OnlineToggle
                 isOnline={isOnline}
-                onToggle={() => setIsOnline(!isOnline)} />
+                onToggle={() => void setIsOnline(!isOnline).catch((error) => showToast(error instanceof Error ? error.message : 'Could not change availability', 'error'))} />
 
 
                 {isOnline &&
@@ -253,7 +255,7 @@ export function HomePage() {
                   variant="secondary"
                   className="w-full py-3">
 
-                      Simulate Job Request
+                      Check for assigned job
                     </GlassButton>
                   </motion.div>
               }

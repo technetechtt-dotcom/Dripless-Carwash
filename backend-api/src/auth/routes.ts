@@ -26,6 +26,7 @@ import { authRequired } from '../middleware/auth.js';
 import { env } from '../config/env.js';
 import { z } from 'zod';
 import { mapCustomerProfile, mapDriverProfile } from '../dto/mappers.js';
+import { enqueue } from '../lib/queue.js';
 
 export const authRouter = Router();
 
@@ -73,7 +74,7 @@ function toSessionResponse(
         refreshExpiresAt: tokens.refreshExpiresAt
       },
       payload: {
-        userId: typeof mapped?.id === 'string' ? mapped.id : user.id,
+        userId: user.id,
         role: user.role,
         email: user.email,
         emailVerified: Boolean(user.emailVerifiedAt),
@@ -99,7 +100,8 @@ async function createEmailVerificationToken(userId: string) {
 async function handleLogin(
   email: string,
   password: string,
-  expectedRole: 'customer' | 'driver' | 'ops_admin'
+  expectedRole: 'customer' | 'driver' | 'ops_admin',
+  context?: { ip?: string; userAgent?: string }
 ) {
   const user = await prisma.user.findUnique({
     where: { email },
@@ -129,13 +131,45 @@ async function handleLogin(
       where: { id: user.id },
       data: { failedLoginCount, lockedUntil }
     });
+    await prisma.loginEvent.create({
+      data: {
+        userId: user.id,
+        ip: context?.ip,
+        userAgent: context?.userAgent,
+        success: false,
+        reason: 'invalid_password'
+      }
+    });
     throw new HttpError(401, 'Invalid credentials');
   }
 
+  const suspicious = Boolean(user.lastLoginIp && context?.ip && user.lastLoginIp !== context.ip);
   await prisma.user.update({
     where: { id: user.id },
-    data: { failedLoginCount: 0, lockedUntil: null, lastLoginAt: new Date() }
+    data: {
+      failedLoginCount: 0,
+      lockedUntil: null,
+      lastLoginAt: new Date(),
+      lastLoginIp: context?.ip,
+      lastLoginUserAgent: context?.userAgent
+    }
   });
+  await prisma.loginEvent.create({
+    data: {
+      userId: user.id,
+      ip: context?.ip,
+      userAgent: context?.userAgent,
+      success: true,
+      reason: suspicious ? 'new_ip' : null
+    }
+  });
+  if (suspicious) {
+    await enqueue('email.send', {
+      to: user.email,
+      subject: 'New Dripless sign-in',
+      text: `A new sign-in was detected from ${context?.ip || 'an unknown address'}. If this was not you, reset your password and log out all devices.`
+    });
+  }
 
   const profile =
     expectedRole === 'customer'
@@ -166,14 +200,14 @@ async function handleLogin(
   }
 
   if (expectedRole === 'ops_admin' && env.isProduction && !env.demoMode && !user.mfaEnabled) {
-    const tokens = await issueSessionTokens(user.id);
+    const tokens = await issueSessionTokens(user.id, context);
     return {
       ...toSessionResponse(user, tokens, profile as unknown as Record<string, unknown>),
       mustEnableMfa: true
     };
   }
 
-  const tokens = await issueSessionTokens(user.id);
+  const tokens = await issueSessionTokens(user.id, context);
   return toSessionResponse(user, tokens, profile as unknown as Record<string, unknown>);
 }
 
@@ -209,7 +243,14 @@ authRouter.post(
       const verificationToken = env.demoMode
         ? null
         : await createEmailVerificationToken(user.id);
-      const tokens = await issueSessionTokens(user.id);
+      if (verificationToken) {
+        await enqueue('email.send', {
+          to: user.email,
+          subject: 'Verify your Dripless email',
+          text: `${env.CUSTOMER_APP_URL}/verify-email?token=${encodeURIComponent(verificationToken)}`
+        });
+      }
+      const tokens = await issueSessionTokens(user.id, { ip: req.ip, userAgent: req.get('user-agent') });
 
       res.status(201).json({
         ...toSessionResponse(
@@ -217,7 +258,7 @@ authRouter.post(
           tokens,
           user.customerProfile as unknown as Record<string, unknown>
         ),
-        verificationToken: env.demoMode ? undefined : verificationToken
+        verificationRequired: Boolean(verificationToken)
       });
     } catch (error) {
       next(error);
@@ -260,14 +301,21 @@ authRouter.post(
       const verificationToken = env.demoMode
         ? null
         : await createEmailVerificationToken(user.id);
-      const tokens = await issueSessionTokens(user.id);
+      if (verificationToken) {
+        await enqueue('email.send', {
+          to: user.email,
+          subject: 'Verify your Dripless driver email',
+          text: `${env.DRIVER_APP_URL}/verify-email?token=${encodeURIComponent(verificationToken)}`
+        });
+      }
+      const tokens = await issueSessionTokens(user.id, { ip: req.ip, userAgent: req.get('user-agent') });
       res.status(201).json({
         ...toSessionResponse(
           user,
           tokens,
           user.driverProfile as unknown as Record<string, unknown>
         ),
-        verificationToken: env.demoMode ? undefined : verificationToken
+        verificationRequired: Boolean(verificationToken)
       });
     } catch (error) {
       next(error);
@@ -281,7 +329,7 @@ authRouter.post(
   validate(loginSchema),
   async (req, res, next) => {
     try {
-      res.json(await handleLogin(req.body.email, req.body.password, 'customer'));
+      res.json(await handleLogin(req.body.email, req.body.password, 'customer', { ip: req.ip, userAgent: req.get('user-agent') }));
     } catch (error) {
       next(error);
     }
@@ -294,7 +342,7 @@ authRouter.post(
   validate(loginSchema),
   async (req, res, next) => {
     try {
-      res.json(await handleLogin(req.body.email, req.body.password, 'driver'));
+      res.json(await handleLogin(req.body.email, req.body.password, 'driver', { ip: req.ip, userAgent: req.get('user-agent') }));
     } catch (error) {
       next(error);
     }
@@ -310,7 +358,7 @@ authRouter.post(
       if (req.body.password.length < 8) {
         throw new HttpError(400, 'Invalid admin credentials');
       }
-      res.json(await handleLogin(req.body.email, req.body.password, 'ops_admin'));
+      res.json(await handleLogin(req.body.email, req.body.password, 'ops_admin', { ip: req.ip, userAgent: req.get('user-agent') }));
     } catch (error) {
       next(error);
     }
@@ -374,6 +422,44 @@ authRouter.post('/logout-all', authRequired, async (req, res, next) => {
   }
 });
 
+authRouter.get('/sessions', authRequired, async (req, res, next) => {
+  try {
+    const currentHash = req.headers.authorization?.startsWith('Bearer ')
+      ? hashToken(req.headers.authorization.slice(7))
+      : '';
+    const rows = await prisma.session.findMany({
+      where: { userId: req.auth!.userId, revokedAt: null, expiresAt: { gt: new Date() } },
+      orderBy: { createdAt: 'desc' }
+    });
+    res.json(
+      rows.map((row) => ({
+        id: row.id,
+        deviceLabel: row.deviceLabel,
+        ipAddress: row.ipAddress,
+        userAgent: row.userAgent,
+        createdAt: row.createdAt,
+        expiresAt: row.expiresAt,
+        current: row.accessTokenHash === currentHash
+      }))
+    );
+  } catch (error) {
+    next(error);
+  }
+});
+
+authRouter.delete('/sessions/:sessionId', authRequired, async (req, res, next) => {
+  try {
+    const changed = await prisma.session.updateMany({
+      where: { id: String(req.params.sessionId), userId: req.auth!.userId, revokedAt: null },
+      data: { revokedAt: new Date() }
+    });
+    if (!changed.count) throw new HttpError(404, 'Active session not found');
+    res.status(204).send();
+  } catch (error) {
+    next(error);
+  }
+});
+
 authRouter.post(
   '/verify-email',
   authRateLimiter,
@@ -385,16 +471,14 @@ authRouter.post(
       if (!record || record.usedAt || record.expiresAt < new Date()) {
         throw new HttpError(400, 'Invalid or expired verification token');
       }
-      await prisma.$transaction([
-        prisma.emailToken.update({
-          where: { id: record.id },
+      await prisma.$transaction(async (tx) => {
+        const claimed = await tx.emailToken.updateMany({
+          where: { id: record.id, usedAt: null, expiresAt: { gt: new Date() } },
           data: { usedAt: new Date() }
-        }),
-        prisma.user.update({
-          where: { id: record.userId },
-          data: { emailVerifiedAt: new Date() }
-        })
-      ]);
+        });
+        if (claimed.count !== 1) throw new HttpError(400, 'Invalid or expired verification token');
+        await tx.user.update({ where: { id: record.userId }, data: { emailVerifiedAt: new Date() } });
+      });
       res.json({ message: 'Email verified' });
     } catch (error) {
       next(error);
@@ -422,11 +506,10 @@ authRouter.post(
         if (env.demoMode) {
           return res.json({ message: 'Password reset token issued', resetToken: token });
         }
-        const { enqueue } = await import('../lib/queue.js');
         await enqueue('email.send', {
           to: user.email,
           subject: 'Reset your Dripless password',
-          text: 'A password reset was requested. Use the link from your Dripless app.'
+          text: `${env.CUSTOMER_APP_URL}/reset-password?token=${encodeURIComponent(token)}`
         });
       }
       res.json({ message: 'If the account exists, a reset email was sent' });
@@ -448,12 +531,13 @@ authRouter.post(
         throw new HttpError(400, 'Invalid or expired reset token');
       }
       const passwordHash = await hashPassword(req.body.password);
-      await prisma.$transaction([
-        prisma.passwordResetToken.update({
-          where: { id: record.id },
+      await prisma.$transaction(async (tx) => {
+        const claimed = await tx.passwordResetToken.updateMany({
+          where: { id: record.id, usedAt: null, expiresAt: { gt: new Date() } },
           data: { usedAt: new Date() }
-        }),
-        prisma.user.update({
+        });
+        if (claimed.count !== 1) throw new HttpError(400, 'Invalid or expired reset token');
+        await tx.user.update({
           where: { id: record.userId },
           data: {
             passwordHash,
@@ -461,8 +545,8 @@ authRouter.post(
             failedLoginCount: 0,
             lockedUntil: null
           }
-        })
-      ]);
+        });
+      });
       await revokeUserSessions(record.userId);
       res.json({ message: 'Password updated' });
     } catch (error) {
@@ -479,19 +563,14 @@ authRouter.post(
   async (req, res, next) => {
     try {
       const code = env.demoMode ? '123456' : String(Math.floor(100000 + Math.random() * 900000));
+      await prisma.phoneOtp.updateMany({
+        where: { userId: req.auth!.userId, usedAt: null },
+        data: { usedAt: new Date() }
+      });
       await prisma.phoneOtp.create({
         data: {
           phone: req.body.phone,
-          userId: (
-            await prisma.user.findFirstOrThrow({
-              where: {
-                OR: [
-                  { customerProfile: { id: req.auth!.profileId } },
-                  { driverProfile: { id: req.auth!.profileId } }
-                ]
-              }
-            })
-          ).id,
+          userId: req.auth!.userId,
           codeHash: hashToken(code),
           expiresAt: new Date(Date.now() + 10 * 60_000)
         }
@@ -515,6 +594,7 @@ authRouter.post(
       const record = await prisma.phoneOtp.findFirst({
         where: {
           phone: req.body.phone,
+          userId: req.auth!.userId,
           codeHash: hashToken(req.body.code),
           usedAt: null,
           expiresAt: { gt: new Date() }
@@ -522,13 +602,16 @@ authRouter.post(
         orderBy: { createdAt: 'desc' }
       });
       if (!record) throw new HttpError(400, 'Invalid or expired code');
-      await prisma.phoneOtp.update({ where: { id: record.id }, data: { usedAt: new Date() } });
-      if (record.userId) {
-        await prisma.user.update({
-          where: { id: record.userId },
-          data: { phoneVerifiedAt: new Date() }
+      await prisma.$transaction(async (tx) => {
+        const claimed = await tx.phoneOtp.updateMany({
+          where: { id: record.id, usedAt: null, expiresAt: { gt: new Date() } },
+          data: { usedAt: new Date() }
         });
-      }
+        if (claimed.count !== 1) throw new HttpError(400, 'Invalid or expired code');
+        await tx.user.update({ where: { id: req.auth!.userId }, data: { phoneVerifiedAt: new Date() } });
+        await tx.customerProfile.updateMany({ where: { userId: req.auth!.userId }, data: { phone: req.body.phone } });
+        await tx.driverProfile.updateMany({ where: { userId: req.auth!.userId }, data: { phone: req.body.phone } });
+      });
       res.json({ message: 'Phone verified' });
     } catch (error) {
       next(error);

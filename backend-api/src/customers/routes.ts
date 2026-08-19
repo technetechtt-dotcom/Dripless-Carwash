@@ -57,7 +57,7 @@ customersRouter.get('/me/vehicles', authRequired, roleRequired(['customer']), as
   try {
     const rows = await prisma.vehicle.findMany({
       where: { customerId: req.auth!.profileId },
-      orderBy: { createdAt: 'desc' }
+      orderBy: [{ isDefault: 'desc' }, { createdAt: 'desc' }]
     });
     res.json(rows);
   } catch (error) {
@@ -77,24 +77,109 @@ customersRouter.post(
       year: z.number().int().min(1980).max(2100).optional(),
       plate: z.string().max(20).optional(),
       sizeClass: z.enum(['STANDARD', 'SEDAN', 'SUV', 'BAKKIE', 'TRUCK']).optional(),
-      colour: z.string().max(40).optional()
+      colour: z.string().max(40).optional(),
+      isDefault: z.boolean().optional()
     })
   ),
   async (req, res, next) => {
     try {
-      const row = await prisma.vehicle.create({
-        data: {
-          customerId: req.auth!.profileId,
-          label: req.body.label,
-          make: req.body.make,
-          model: req.body.model,
-          year: req.body.year,
-          plate: req.body.plate,
-          sizeClass: req.body.sizeClass || 'STANDARD',
-          colour: req.body.colour
+      const row = await prisma.$transaction(async (tx) => {
+        const count = await tx.vehicle.count({ where: { customerId: req.auth!.profileId } });
+        const isDefault = Boolean(req.body.isDefault || count === 0);
+        if (isDefault) {
+          await tx.vehicle.updateMany({
+            where: { customerId: req.auth!.profileId, isDefault: true },
+            data: { isDefault: false }
+          });
         }
+        return tx.vehicle.create({
+          data: {
+            customerId: req.auth!.profileId,
+            label: req.body.label,
+            make: req.body.make,
+            model: req.body.model,
+            year: req.body.year,
+            plate: req.body.plate,
+            sizeClass: req.body.sizeClass || 'STANDARD',
+            colour: req.body.colour,
+            isDefault
+          }
+        });
       });
       res.status(201).json(row);
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+customersRouter.patch(
+  '/me/vehicles/:vehicleId',
+  authRequired,
+  roleRequired(['customer']),
+  validate(
+    z.object({
+      label: z.string().min(1).max(80).optional(),
+      make: z.string().max(80).nullable().optional(),
+      model: z.string().max(80).nullable().optional(),
+      year: z.number().int().min(1980).max(2100).nullable().optional(),
+      plate: z.string().max(20).nullable().optional(),
+      sizeClass: z.enum(['STANDARD', 'SEDAN', 'SUV', 'BAKKIE', 'TRUCK']).optional(),
+      colour: z.string().max(40).nullable().optional(),
+      isDefault: z.boolean().optional()
+    })
+  ),
+  async (req, res, next) => {
+    try {
+      const vehicleId = String(req.params.vehicleId);
+      const row = await prisma.$transaction(async (tx) => {
+        const existing = await tx.vehicle.findFirst({
+          where: { id: vehicleId, customerId: req.auth!.profileId }
+        });
+        if (!existing) throw new HttpError(404, 'Vehicle not found');
+        if (req.body.isDefault) {
+          await tx.vehicle.updateMany({
+            where: { customerId: req.auth!.profileId, isDefault: true, id: { not: vehicleId } },
+            data: { isDefault: false }
+          });
+        }
+        if (req.body.isDefault === false && existing.isDefault) {
+          throw new HttpError(400, 'Choose another default vehicle before clearing this one');
+        }
+        return tx.vehicle.update({ where: { id: vehicleId }, data: req.body });
+      });
+      res.json(row);
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+customersRouter.delete(
+  '/me/vehicles/:vehicleId',
+  authRequired,
+  roleRequired(['customer']),
+  async (req, res, next) => {
+    try {
+      const vehicle = await prisma.vehicle.findFirst({
+        where: { id: String(req.params.vehicleId), customerId: req.auth!.profileId },
+        include: { bookings: { where: { status: { in: ['PENDING', 'CONFIRMED', 'EN_ROUTE', 'ARRIVED', 'IN_PROGRESS'] } } } }
+      });
+      if (!vehicle) throw new HttpError(404, 'Vehicle not found');
+      if (vehicle.bookings.length) throw new HttpError(409, 'Vehicle has an active booking');
+      await prisma.$transaction(async (tx) => {
+        await tx.vehicle.delete({ where: { id: vehicle.id } });
+        if (vehicle.isDefault) {
+          const replacement = await tx.vehicle.findFirst({
+            where: { customerId: req.auth!.profileId },
+            orderBy: { createdAt: 'desc' }
+          });
+          if (replacement) {
+            await tx.vehicle.update({ where: { id: replacement.id }, data: { isDefault: true } });
+          }
+        }
+      });
+      res.status(204).send();
     } catch (error) {
       next(error);
     }
@@ -147,6 +232,72 @@ customersRouter.post(
         }
       });
       res.status(201).json(row);
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+customersRouter.patch(
+  '/me/addresses/:addressId',
+  authRequired,
+  roleRequired(['customer']),
+  validate(
+    z.object({
+      label: z.string().min(1).max(80).optional(),
+      line1: z.string().min(3).max(200).optional(),
+      line2: z.string().max(200).nullable().optional(),
+      suburb: z.string().max(80).nullable().optional(),
+      city: z.string().max(80).nullable().optional(),
+      postalCode: z.string().max(12).nullable().optional(),
+      accessNotes: z.string().max(500).nullable().optional(),
+      isDefault: z.boolean().optional()
+    })
+  ),
+  async (req, res, next) => {
+    try {
+      const existing = await prisma.savedAddress.findFirst({
+        where: { id: String(req.params.addressId), customerId: req.auth!.profileId }
+      });
+      if (!existing) throw new HttpError(404, 'Address not found');
+      const line1 = req.body.line1 ?? existing.line1;
+      const city = req.body.city === undefined ? existing.city : req.body.city;
+      const geo = req.body.line1 || req.body.city !== undefined
+        ? await resolveCoordinatesAsync({ label: `${line1} ${city || ''}` })
+        : null;
+      const row = await prisma.$transaction(async (tx) => {
+        if (req.body.isDefault) {
+          await tx.savedAddress.updateMany({
+            where: { customerId: req.auth!.profileId },
+            data: { isDefault: false }
+          });
+        }
+        return tx.savedAddress.update({
+          where: { id: existing.id },
+          data: {
+            ...req.body,
+            ...(geo ? { lat: geo.lat, lng: geo.lng } : {})
+          }
+        });
+      });
+      res.json(row);
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+customersRouter.delete(
+  '/me/addresses/:addressId',
+  authRequired,
+  roleRequired(['customer']),
+  async (req, res, next) => {
+    try {
+      const deleted = await prisma.savedAddress.deleteMany({
+        where: { id: String(req.params.addressId), customerId: req.auth!.profileId }
+      });
+      if (!deleted.count) throw new HttpError(404, 'Address not found');
+      res.status(204).send();
     } catch (error) {
       next(error);
     }

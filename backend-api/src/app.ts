@@ -7,6 +7,7 @@ import { apiRateLimiter } from './middleware/rateLimit.js';
 import { errorHandler, notFoundHandler } from './middleware/error.js';
 import { authRouter } from './auth/routes.js';
 import { mfaRouter } from './auth/mfaRoutes.js';
+import { passkeyRouter } from './auth/passkeyRoutes.js';
 import { bookingsRouter } from './bookings/routes.js';
 import { driversRouter } from './drivers/routes.js';
 import { driverOnboardingRouter } from './drivers/onboarding.js';
@@ -29,8 +30,12 @@ import { authRequired } from './middleware/auth.js';
 import { redisHealth } from './lib/redis.js';
 import { jobStats } from './lib/queue.js';
 import { subscribeSse } from './lib/events.js';
+import { geoRouter } from './geo/routes.js';
+import { invoicesRouter } from './invoices/routes.js';
+import { attachMonitoringErrorHandler, initializeMonitoring } from './lib/monitoring.js';
 
 export function createApp() {
+  initializeMonitoring();
   const app = express();
 
   app.use((req, res, next) => {
@@ -66,7 +71,14 @@ export function createApp() {
     })
   );
 
-  app.use(express.json({ limit: '8mb' }));
+  app.use(
+    express.json({
+      limit: '8mb',
+      verify(req, _res, buffer) {
+        (req as typeof req & { rawBody?: Buffer }).rawBody = Buffer.from(buffer);
+      }
+    })
+  );
   app.use(express.urlencoded({ extended: true }));
   app.use(apiRateLimiter);
 
@@ -106,6 +118,7 @@ export function createApp() {
 
   app.use('/auth', authRouter);
   app.use('/auth/mfa', mfaRouter);
+  app.use('/auth/passkeys', passkeyRouter);
   app.use('/bookings', bookingsRouter);
   app.use('/bookings', evidenceRouter);
   app.use('/driver', driversRouter);
@@ -124,7 +137,10 @@ export function createApp() {
   app.use('/impact', impactRouter);
   app.use('/complaints', complaintsRouter);
   app.use('/notifications', notificationsRouter);
+  app.use('/geo', geoRouter);
+  app.use('/invoices', invoicesRouter);
 
+  attachMonitoringErrorHandler(app);
   app.use(notFoundHandler);
   app.use(errorHandler);
   return app;

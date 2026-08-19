@@ -3,6 +3,7 @@ import type { UserRole } from '@prisma/client';
 import { prisma } from '../db/prisma.js';
 import { hashToken } from '../auth/tokens.js';
 import { HttpError } from './error.js';
+import { env } from '../config/env.js';
 
 export type AuthPayload = {
   userId: string;
@@ -17,6 +18,7 @@ declare global {
     interface Request {
       auth?: AuthPayload;
       requestId?: string;
+      rawBody?: Buffer;
     }
   }
 }
@@ -55,9 +57,18 @@ export async function authRequired(req: Request, _res: Response, next: NextFunct
     if (!profileId) {
       throw new HttpError(401, 'Profile missing for authenticated user');
     }
+    if (
+      env.isProduction &&
+      env.MFA_REQUIRED_OPS &&
+      user.role === 'ops_admin' &&
+      !session.mfaVerifiedAt &&
+      !['/auth/mfa', '/auth/passkeys'].includes(req.baseUrl)
+    ) {
+      throw new HttpError(403, 'Ops MFA enrollment is required');
+    }
 
     req.auth = {
-      userId: profileId,
+      userId: user.id,
       role: user.role,
       email: user.email,
       profileId,

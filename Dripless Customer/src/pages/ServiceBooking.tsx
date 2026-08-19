@@ -1,4 +1,4 @@
-import React, { useEffect, useState, Children } from 'react';
+import React, { useEffect, useMemo, useState, Children } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   ArrowLeftIcon,
@@ -19,7 +19,7 @@ import { motion } from 'framer-motion';
 import CarWashPackages from '../components/CarWashPackages';
 import CheckoutModal from '../components/CheckoutModal';
 import LocationPickerMap from '../components/LocationPickerMap';
-import { specialsApi } from '@shared/api';
+import { apiRuntimeConfig, catalogApi, customerAccountApi, specialsApi } from '@shared/api';
 import type { OpsSpecial, SpecialServiceScope } from '@shared/types';
 import { ROUTES } from '../utils/routes';
 import { formatCurrency } from '../utils/currency';
@@ -252,6 +252,25 @@ const serviceTypes = {
 
   }
 };
+type CatalogService = {
+  slug: string;
+  name: string;
+  description?: string | null;
+  options: Array<{
+    id: string;
+    slug: string;
+    name: string;
+    basePriceZar: number;
+    ecoPointsAward: number;
+  }>;
+};
+type FavoriteLocation = {
+  id: string;
+  name: string;
+  address: string;
+  lat?: number | null;
+  lng?: number | null;
+};
 const ServiceBooking = () => {
   const { service } = useParams();
   const navigate = useNavigate();
@@ -280,35 +299,55 @@ const ServiceBooking = () => {
   const [promoCodeInput, setPromoCodeInput] = useState('');
   const [appliedSpecial, setAppliedSpecial] = useState<OpsSpecial | null>(null);
   const [promoError, setPromoError] = useState('');
-  // Mock favorite locations
-  const [favoriteLocations, setFavoriteLocations] = useState([
-  {
-    id: 1,
-    name: 'Home',
-    address: '123 Green Street, Eco City'
-  },
-  {
-    id: 2,
-    name: 'Work',
-    address: '456 Solar Avenue, Eco City'
-  },
-  {
-    id: 3,
-    name: 'Gym',
-    address: '789 Sustainable Road, Eco City'
-  }]
-  );
-  const resolvedServiceData = serviceTypes[service as keyof typeof serviceTypes];
-  const serviceData = resolvedServiceData ?? {
-    title: 'Service not found',
-    options: []
-  };
+  const [favoriteLocations, setFavoriteLocations] = useState<FavoriteLocation[]>([]);
+  const [catalogServices, setCatalogServices] = useState<CatalogService[]>([]);
+  const serviceData = useMemo(() => {
+    const live = catalogServices.find((entry) => entry.slug === service);
+    if (live) {
+      return {
+        title: live.name,
+        options: live.options.map((option) => ({
+          id: option.slug,
+          name: option.name,
+          description: live.description || option.name,
+          price: option.basePriceZar,
+          eco: Math.max(1, Math.min(5, Math.round(option.ecoPointsAward / 100)))
+        }))
+      };
+    }
+    if (apiRuntimeConfig.isMockEnabled()) {
+      return serviceTypes[service as keyof typeof serviceTypes] ?? { title: 'Service not found', options: [] };
+    }
+    return { title: 'Service unavailable', options: [] };
+  }, [catalogServices, service]);
   const getSelectedOptionDetails = () => {
     if (!serviceData) return null;
     return (
       serviceData.options.find((option) => option.id === selectedOption) || null);
 
   };
+  useEffect(() => {
+    let cancelled = false;
+    void Promise.all([catalogApi.services(), customerAccountApi.addresses()])
+      .then(([services, addresses]) => {
+        if (cancelled) return;
+        setCatalogServices(services as CatalogService[]);
+        setFavoriteLocations(addresses.map((row) => ({
+          id: String(row.id),
+          name: String(row.label),
+          address: [row.line1, row.city].filter(Boolean).join(', '),
+          lat: typeof row.lat === 'number' ? row.lat : null,
+          lng: typeof row.lng === 'number' ? row.lng : null
+        })));
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setCatalogServices([]);
+          setFavoriteLocations([]);
+        }
+      });
+    return () => { cancelled = true; };
+  }, []);
   useEffect(() => {
     if (!serviceData) return;
     if (service === 'taxi' || service === 'delivery') {
@@ -358,7 +397,7 @@ const ServiceBooking = () => {
     }
     proceedToConfirmation();
   };
-  const proceedToConfirmation = () => {
+  const proceedToConfirmation = (paymentMethod: 'paystack' | 'wallet' = 'paystack') => {
     const computedPrice = finalCalculatedPrice;
     const bookingDetails = {
       service: serviceData.title,
@@ -386,7 +425,7 @@ const ServiceBooking = () => {
       service === 'taxi' || service === 'delivery' ?
       destinationCoordinates :
       null,
-      paymentMethod: 'Visa •••• 4242',
+      paymentMethod,
       fareEstimate: fareEstimate,
       measurementDetails: isWindowSolarService ?
       {
@@ -417,27 +456,31 @@ const ServiceBooking = () => {
       });
     }
   };
-  const handleCheckoutConfirm = () => {
+  const handleCheckoutConfirm = (paymentMethod: 'paystack' | 'wallet') => {
     setShowCheckoutModal(false);
-    proceedToConfirmation();
+    proceedToConfirmation(paymentMethod);
   };
-  const addToFavorites = (address: string) => {
+  const addToFavorites = async (address: string) => {
     const name = `Favorite ${favoriteLocations.length + 1}`;
-    const newFavorite = {
-      id: favoriteLocations.length + 1,
-      name,
-      address
-    };
-    setFavoriteLocations([...favoriteLocations, newFavorite]);
+    const row = await customerAccountApi.createAddress({ label: name, line1: address, isDefault: false });
+    setFavoriteLocations((current) => [{
+      id: String(row.id),
+      name: String(row.label),
+      address: [row.line1, row.city].filter(Boolean).join(', '),
+      lat: typeof row.lat === 'number' ? row.lat : null,
+      lng: typeof row.lng === 'number' ? row.lng : null
+    }, ...current]);
   };
   const selectFavoriteLocation = (address: string, isPickup: boolean) => {
+    const favorite = favoriteLocations.find((entry) => entry.address === address);
+    const coordinates = favorite?.lat != null && favorite.lng != null ? { lat: favorite.lat, lng: favorite.lng } : null;
     if (isPickup) {
       setPickupAddress(address);
-      setPickupCoordinates(null);
+      setPickupCoordinates(coordinates);
       setShowFavoritePickup(false);
     } else {
       setDestinationAddress(address);
-      setDestinationCoordinates(null);
+      setDestinationCoordinates(coordinates);
       setShowFavoriteDestination(false);
     }
   };
@@ -874,7 +917,7 @@ const ServiceBooking = () => {
                     {pickupAddress &&
                   <button
                     type="button"
-                    onClick={() => addToFavorites(pickupAddress)}
+                    onClick={() => void addToFavorites(pickupAddress)}
                     className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition-colors text-slate-400 hover:text-red-500">
 
                         <HeartIcon size={18} />
@@ -964,7 +1007,7 @@ const ServiceBooking = () => {
                     {destinationAddress &&
                   <button
                     type="button"
-                    onClick={() => addToFavorites(destinationAddress)}
+                    onClick={() => void addToFavorites(destinationAddress)}
                     className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition-colors text-slate-400 hover:text-red-500">
 
                         <HeartIcon size={18} />
@@ -1096,7 +1139,7 @@ const ServiceBooking = () => {
                   {pickupAddress &&
                 <button
                   type="button"
-                  onClick={() => addToFavorites(pickupAddress)}
+                  onClick={() => void addToFavorites(pickupAddress)}
                   className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition-colors text-slate-400 hover:text-red-500">
 
                       <HeartIcon size={18} />
@@ -1223,10 +1266,9 @@ const ServiceBooking = () => {
             Payment Method
           </label>
           <div className="relative">
-            <select className="w-full p-3.5 bg-white/70 dark:bg-slate-800/60 backdrop-blur border border-slate-200 dark:border-slate-700 rounded-xl pl-11 appearance-none focus:ring-2 focus:ring-eco-500 focus:border-transparent outline-none transition-all dark:text-white">
-              <option>Visa •••• 4242</option>
-              <option>Add new payment method</option>
-            </select>
+            <div className="w-full p-3.5 bg-white/70 dark:bg-slate-800/60 backdrop-blur border border-slate-200 dark:border-slate-700 rounded-xl pl-11 dark:text-white">
+              Secure card payment via Paystack
+            </div>
             <CreditCardIcon
               size={18}
               className="absolute left-3.5 top-4 text-slate-400" />
@@ -1276,8 +1318,7 @@ const ServiceBooking = () => {
         }
         date={date}
         time={time}
-        location={pickupAddress}
-        paymentMethod="Visa •••• 4242" />
+        location={pickupAddress} />
 
       }
     </motion.div>);

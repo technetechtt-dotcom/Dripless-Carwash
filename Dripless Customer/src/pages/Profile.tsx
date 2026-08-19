@@ -14,7 +14,8 @@ import {
   FileTextIcon,
   MessageSquareIcon,
   TicketIcon,
-  GiftIcon } from
+  GiftIcon,
+  MapPinIcon } from
 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
@@ -241,6 +242,39 @@ const Profile = () => {
                 <span className="text-sm font-medium text-slate-700 dark:text-slate-200">
                   Personal Information
                 </span>
+              </div>
+              <ChevronRightIcon size={18} className="text-slate-400" />
+            </motion.button>
+
+            <motion.button
+              whileTap={{ scale: 0.98 }}
+              onClick={() => navigate(ROUTES.SAVED_ADDRESSES)}
+              className="w-full flex items-center justify-between p-3 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors">
+              <div className="flex items-center">
+                <div className="bg-slate-100 dark:bg-slate-700 p-2 rounded-lg mr-3"><MapPinIcon size={18} className="text-slate-600 dark:text-slate-300" /></div>
+                <span className="text-sm font-medium text-slate-700 dark:text-slate-200">Saved Addresses</span>
+              </div>
+              <ChevronRightIcon size={18} className="text-slate-400" />
+            </motion.button>
+
+            <motion.button
+              whileTap={{ scale: 0.98 }}
+              onClick={() => navigate(ROUTES.SECURITY)}
+              className="w-full flex items-center justify-between p-3 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors">
+              <div className="flex items-center">
+                <div className="bg-slate-100 dark:bg-slate-700 p-2 rounded-lg mr-3"><ShieldIcon size={18} className="text-slate-600 dark:text-slate-300" /></div>
+                <span className="text-sm font-medium text-slate-700 dark:text-slate-200">Security & Privacy</span>
+              </div>
+              <ChevronRightIcon size={18} className="text-slate-400" />
+            </motion.button>
+
+            <motion.button
+              whileTap={{ scale: 0.98 }}
+              onClick={() => navigate(ROUTES.RECEIPTS)}
+              className="w-full flex items-center justify-between p-3 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors">
+              <div className="flex items-center">
+                <div className="bg-slate-100 dark:bg-slate-700 p-2 rounded-lg mr-3"><FileTextIcon size={18} className="text-slate-600 dark:text-slate-300" /></div>
+                <span className="text-sm font-medium text-slate-700 dark:text-slate-200">Receipts & Invoices</span>
               </div>
               <ChevronRightIcon size={18} className="text-slate-400" />
             </motion.button>

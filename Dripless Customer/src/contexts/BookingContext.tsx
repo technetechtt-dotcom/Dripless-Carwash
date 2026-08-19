@@ -2,11 +2,12 @@ import React, {
   createContext,
   useContext,
   useEffect,
+  useCallback,
   useMemo,
   useState,
   type ReactNode
 } from 'react';
-import { bookingApi, notificationApi, specialsApi } from '@shared/api';
+import { bookingApi, paymentsApi } from '@shared/api';
 import { getActiveSession } from '@shared/session';
 import {
   toBackendBookingStatus,
@@ -14,7 +15,6 @@ import {
   type CustomerBookingStatus
 } from '@shared/status';
 import { notify } from '../utils/notify';
-import { formatCurrency } from '../utils/currency';
 import type { BookingContract } from '@shared/types';
 export interface Booking {
   id: string;
@@ -41,12 +41,10 @@ interface BookingContextType {
   completedBookings: Booking[];
   addBooking: (
   booking: Omit<Booking, 'id' | 'status' | 'ecoPoints' | 'createdAt'>)
-  => Booking;
+  => Promise<Booking>;
   updateBookingStatus: (id: string, status: Booking['status']) => void;
-  cancelBooking: (id: string) => void;
+  cancelBooking: (id: string, reason?: string) => Promise<Booking>;
   walletBalance: number;
-  addFunds: (amount: number) => void;
-  deductFunds: (amount: number) => boolean;
   transactions: Transaction[];
 }
 export interface Transaction {
@@ -65,53 +63,10 @@ export const useBookings = () => {
   }
   return context;
 };
-const initialTransactions: Transaction[] = [
-{
-  id: '1',
-  type: 'service',
-  title: 'Car Wash - Premium',
-  date: 'Yesterday, 3:30 PM',
-  amount: -24.99,
-  status: 'completed'
-},
-{
-  id: '2',
-  type: 'topup',
-  title: 'Wallet Top-up',
-  date: 'May 13, 2:00 PM',
-  amount: 50.0,
-  status: 'completed'
-},
-{
-  id: '3',
-  type: 'service',
-  title: 'Eco Taxi',
-  date: 'May 12, 10:15 AM',
-  amount: -18.5,
-  status: 'completed'
-},
-{
-  id: '4',
-  type: 'reward',
-  title: 'EcoPoints Redemption',
-  date: 'May 10, 4:30 PM',
-  amount: 5.0,
-  status: 'completed'
-},
-{
-  id: '5',
-  type: 'service',
-  title: 'Window Cleaning',
-  date: 'May 5, 2:00 PM',
-  amount: -39.99,
-  status: 'completed'
-}];
-
 export const BookingProvider = ({ children }: {children: ReactNode;}) => {
   const [bookings, setBookings] = useState<Booking[]>([]);
-  const [walletBalance, setWalletBalance] = useState(45.5);
-  const [transactions, setTransactions] =
-  useState<Transaction[]>(initialTransactions);
+  const [walletBalance, setWalletBalance] = useState(0);
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
   const session = getActiveSession();
   const customerId = session?.payload.userId ?? '';
   const customerName = session?.payload.email;
@@ -165,6 +120,39 @@ export const BookingProvider = ({ children }: {children: ReactNode;}) => {
       cancelled = true;
     };
   }, [customerId, toUiBooking]);
+
+  const refreshWallet = useCallback(async () => {
+    if (!customerId) {
+      setWalletBalance(0);
+      setTransactions([]);
+      return;
+    }
+    try {
+      const wallet = await paymentsApi.wallet();
+      setWalletBalance(wallet.walletBalance);
+      setTransactions(wallet.transactions.map((entry) => {
+        const type: Transaction['type'] =
+          entry.type === 'REFUND' ? 'refund' :
+          entry.type === 'PROMO_CREDIT' ? 'reward' :
+          ['PAYMENT', 'DEBIT', 'PAYOUT'].includes(entry.type) ? 'service' : 'topup';
+        return {
+          id: entry.id,
+          type,
+          title: entry.note || entry.reference || entry.type.replace(/_/g, ' ').toLowerCase(),
+          date: new Date(entry.createdAt).toLocaleString(),
+          amount: entry.amountZar,
+          status: 'completed' as const
+        };
+      }));
+    } catch {
+      setWalletBalance(0);
+      setTransactions([]);
+    }
+  }, [customerId]);
+
+  useEffect(() => {
+    void refreshWallet();
+  }, [refreshWallet]);
   const activeBookings = bookings.filter(
     (b) =>
     b.status === 'pending' ||
@@ -172,11 +160,12 @@ export const BookingProvider = ({ children }: {children: ReactNode;}) => {
     b.status === 'in-progress'
   );
   const completedBookings = bookings.filter((b) => b.status === 'completed');
-  const addBooking = (
+  const addBooking = useCallback(async (
   bookingData: Omit<Booking, 'id' | 'status' | 'ecoPoints' | 'createdAt'>) =>
   {
-    const booking = bookingApi.createBooking({
-      customerId: customerId || 'anonymous-customer',
+    if (!customerId) throw new Error('Sign in before creating a booking');
+    const createdBooking = await bookingApi.createBooking({
+      customerId,
       customerName,
       serviceName: bookingData.service,
       optionName: bookingData.option,
@@ -192,46 +181,14 @@ export const BookingProvider = ({ children }: {children: ReactNode;}) => {
       scheduledDate: bookingData.date,
       scheduledTime: bookingData.time
     });
-    if (bookingData.appliedSpecialPromoCode && session?.payload.role === 'customer') {
-      void specialsApi.redeemSpecial({
-        role: 'customer',
-        userId: customerId,
-        promoCode: bookingData.appliedSpecialPromoCode
-      });
-    }
-
-    // The UI keeps local bookings in customer-friendly labels.
-    const newBooking: Booking = {
-      ...bookingData,
-      id: `ECO-${Date.now()}`,
-      status: 'pending',
-      ecoPoints: Math.round(bookingData.price * 10),
-      createdAt: new Date().toISOString()
-    };
+    const newBooking = toUiBooking(createdBooking);
     setBookings((prev) => [newBooking, ...prev]);
-    // Add transaction
-    const newTransaction: Transaction = {
-      id: `t-${Date.now()}`,
-      type: 'service',
-      title: `${bookingData.service} - ${bookingData.option}`,
-      date: 'Just now',
-      amount: -bookingData.price,
-      status: 'completed'
-    };
-    setTransactions((prev) => [newTransaction, ...prev]);
     notify.success(
       'Booking confirmed!',
       `${bookingData.service} scheduled for ${bookingData.date} at ${bookingData.time}`
     );
-    void booking.then((createdBooking) => {
-      setBookings((prev) =>
-        prev.map((existingBooking) =>
-          existingBooking.id === newBooking.id ? toUiBooking(createdBooking) : existingBooking
-        )
-      );
-    });
     return newBooking;
-  };
+  }, [customerId, customerName, toUiBooking]);
   const updateBookingStatus = (id: string, status: Booking['status']) => {
     void bookingApi.updateBookingStatus(
       id,
@@ -252,64 +209,12 @@ export const BookingProvider = ({ children }: {children: ReactNode;}) => {
       notify.success('Service completed! EcoPoints earned.');
     }
   };
-  const cancelBooking = (id: string) => {
-    const booking = bookings.find((b) => b.id === id);
-    if (booking) {
-      setBookings((prev) =>
-      prev.map((b) =>
-      b.id === id ?
-      {
-        ...b,
-        status: 'cancelled' as const
-      } :
-      b
-      )
-      );
-      // Refund
-      setWalletBalance((prev) => prev + booking.price);
-      const refundTransaction: Transaction = {
-        id: `t-${Date.now()}`,
-        type: 'refund',
-        title: `Refund - ${booking.service}`,
-        date: 'Just now',
-        amount: booking.price,
-        status: 'completed'
-      };
-      setTransactions((prev) => [refundTransaction, ...prev]);
-      notify.info('Booking cancelled. Refund added to wallet.');
-      void bookingApi.updateBookingStatus(id, 'CANCELLED', 'customer');
-    }
-  };
-  const addFunds = (amount: number) => {
-    setWalletBalance((prev) => prev + amount);
-    const newTransaction: Transaction = {
-      id: `t-${Date.now()}`,
-      type: 'topup',
-      title: 'Wallet Top-up',
-      date: 'Just now',
-      amount: amount,
-      status: 'completed'
-    };
-    setTransactions((prev) => [newTransaction, ...prev]);
-    notify.success(`${formatCurrency(amount)} added to your wallet!`);
-    const session = getActiveSession();
-    if (session?.payload.role === 'customer') {
-      void notificationApi.createNotification({
-        role: 'customer',
-        userId: session.payload.userId,
-        title: 'Wallet top-up',
-        message: `${formatCurrency(amount)} was added to your wallet.`,
-        type: 'success'
-      });
-    }
-  };
-  const deductFunds = (amount: number): boolean => {
-    if (walletBalance >= amount) {
-      setWalletBalance((prev) => prev - amount);
-      return true;
-    }
-    notify.error('Insufficient wallet balance');
-    return false;
+  const cancelBooking = async (id: string, reason?: string) => {
+    const cancelled = toUiBooking(await bookingApi.cancelBooking(id, reason));
+    setBookings((prev) => prev.map((booking) => booking.id === id ? cancelled : booking));
+    notify.info('Booking cancelled. Any eligible refund will be processed to the original payment method.');
+    await refreshWallet();
+    return cancelled;
   };
   return (
     <BookingContext.Provider
@@ -321,8 +226,6 @@ export const BookingProvider = ({ children }: {children: ReactNode;}) => {
         updateBookingStatus,
         cancelBooking,
         walletBalance,
-        addFunds,
-        deductFunds,
         transactions
       }}>
 

@@ -51,6 +51,55 @@ async function geocodeWithProvider(label: string): Promise<GeoPoint | null> {
   return null;
 }
 
+export async function autocompleteAddress(query: string) {
+  const label = query.trim();
+  if (label.length < 3) return [];
+  if (env.GEOCODER_PROVIDER === 'mapbox' && env.MAPBOX_ACCESS_TOKEN) {
+    const url = new URL(
+      `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(label)}.json`
+    );
+    url.searchParams.set('access_token', env.MAPBOX_ACCESS_TOKEN);
+    url.searchParams.set('limit', '5');
+    url.searchParams.set('country', 'za');
+    url.searchParams.set('autocomplete', 'true');
+    const response = await fetch(url);
+    if (!response.ok) throw new HttpError(502, 'Address provider unavailable');
+    const body = (await response.json()) as {
+      features?: Array<{ id?: string; place_name?: string; center?: [number, number] }>;
+    };
+    return (body.features || []).flatMap((feature) =>
+      feature.place_name && feature.center
+        ? [{ id: feature.id || feature.place_name, label: feature.place_name, lat: feature.center[1], lng: feature.center[0] }]
+        : []
+    );
+  }
+  if (env.GEOCODER_PROVIDER === 'google' && env.GOOGLE_MAPS_API_KEY) {
+    const url = new URL('https://maps.googleapis.com/maps/api/place/autocomplete/json');
+    url.searchParams.set('input', label);
+    url.searchParams.set('key', env.GOOGLE_MAPS_API_KEY);
+    url.searchParams.set('components', 'country:za');
+    const response = await fetch(url);
+    if (!response.ok) throw new HttpError(502, 'Address provider unavailable');
+    const body = (await response.json()) as {
+      predictions?: Array<{ place_id?: string; description?: string }>;
+    };
+    const predictions = body.predictions || [];
+    return Promise.all(
+      predictions.slice(0, 5).map(async (prediction) => {
+        const point = prediction.description ? await geocodeWithProvider(prediction.description) : null;
+        return {
+          id: prediction.place_id || prediction.description || '',
+          label: prediction.description || '',
+          lat: point?.lat ?? null,
+          lng: point?.lng ?? null
+        };
+      })
+    );
+  }
+  if (env.isProduction) throw new HttpError(503, 'Address autocomplete is not configured');
+  return [];
+}
+
 /** Production: never invent coordinates. Demo mode may synthesize for UI demos. */
 export function resolveCoordinates(input: {
   lat?: number | null;

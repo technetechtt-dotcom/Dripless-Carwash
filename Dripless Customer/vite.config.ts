@@ -1,4 +1,4 @@
-import { defineConfig } from 'vite'
+import { defineConfig } from 'vitest/config'
 import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
 import { resolve } from 'node:path'
@@ -44,6 +44,14 @@ export default defineConfig({
   resolve: {
     alias: {
       '@shared': resolve(__dirname, '../shared-contract/src')
+    }
+  },
+  test: {
+    coverage: {
+      provider: 'v8',
+      reporter: ['text', 'json-summary'],
+      include: ['src/utils/currency.ts'],
+      thresholds: { lines: 90, functions: 75, statements: 90, branches: 30 }
     }
   },
   // Only crawl app sources — Capacitor synced android/ios bundles can confuse dep scan.

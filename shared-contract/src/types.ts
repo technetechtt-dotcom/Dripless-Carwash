@@ -20,8 +20,8 @@ export type DriverVerificationStatus =
 export interface SessionTokens {
   accessToken: string;
   refreshToken: string;
-  expiresAt: number;
-  refreshExpiresAt?: number;
+  expiresAt: number | string;
+  refreshExpiresAt?: number | string;
 }
 
 export interface SessionPayload {
@@ -54,7 +54,9 @@ export interface DriverProfile {
   id: string;
   name: string;
   email: string;
+  phone?: string | null;
   vehicle: string;
+  plateNumber?: string | null;
   rating: number;
   ecoPoints: number;
   memberSince: string;
@@ -78,6 +80,7 @@ export interface OpsAdminProfile {
   name: string;
   email: string;
   permissions: string[];
+  mfaEnrollmentRequired?: boolean;
 }
 
 export interface AdminAudit {
@@ -140,6 +143,12 @@ export interface BookingTrackingSnapshot {
   } | null;
   driverId?: string;
   driverName?: string;
+  driverPhone?: string | null;
+  driverVehicle?: string | null;
+  driverPlateNumber?: string | null;
+  driverRating?: number | null;
+  driverAvatarUrl?: string | null;
+  driverCompletedJobs?: number;
   driverLocation?: {
     lat: number;
     lng: number;
