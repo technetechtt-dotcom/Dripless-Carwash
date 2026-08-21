@@ -397,7 +397,7 @@ const ServiceBooking = () => {
     }
     proceedToConfirmation();
   };
-  const proceedToConfirmation = (paymentMethod: 'paystack' | 'wallet' = 'paystack') => {
+  const proceedToConfirmation = (paymentMethod: 'ozow' | 'wallet' = 'ozow') => {
     const computedPrice = finalCalculatedPrice;
     const bookingDetails = {
       service: serviceData.title,
@@ -456,7 +456,7 @@ const ServiceBooking = () => {
       });
     }
   };
-  const handleCheckoutConfirm = (paymentMethod: 'paystack' | 'wallet') => {
+  const handleCheckoutConfirm = (paymentMethod: 'ozow' | 'wallet') => {
     setShowCheckoutModal(false);
     proceedToConfirmation(paymentMethod);
   };

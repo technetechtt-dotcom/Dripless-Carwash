@@ -4,7 +4,7 @@ import { AnimatePresence, motion } from 'framer-motion';
 import { useBookings } from '../contexts/BookingContext';
 import { formatCurrency, formatPoints } from '../utils/currency';
 
-type PaymentMethod = 'paystack' | 'wallet';
+type PaymentMethod = 'ozow' | 'wallet';
 
 type CheckoutModalProps = {
   isOpen: boolean;
@@ -19,11 +19,11 @@ type CheckoutModalProps = {
 
 const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, onConfirm, selectedPackage, customServices, date, time, location }) => {
   const { walletBalance } = useBookings();
-  const [selectedPayment, setSelectedPayment] = useState<PaymentMethod>('paystack');
+  const [selectedPayment, setSelectedPayment] = useState<PaymentMethod>('ozow');
   const total = selectedPackage?.price ?? customServices?.reduce((sum, service) => sum + service.price, 0) ?? 0;
   const canPayWithWallet = walletBalance >= total;
   const options = [
-    { id: 'paystack' as const, label: 'Pay securely by card', description: 'Continue to Paystack hosted checkout', icon: CreditCardIcon, available: true },
+    { id: 'ozow' as const, label: 'Pay by bank (Ozow)', description: 'Secure instant EFT via Ozow', icon: CreditCardIcon, available: true },
     { id: 'wallet' as const, label: 'Dripless Wallet', description: `Balance: ${formatCurrency(walletBalance)}`, icon: WalletIcon, available: canPayWithWallet }
   ];
 

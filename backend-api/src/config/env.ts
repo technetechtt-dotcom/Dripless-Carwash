@@ -33,6 +33,13 @@ const envSchema = z.object({
   OZOW_SITE_CODE: z.string().optional().default(''),
   OZOW_API_KEY: z.string().optional().default(''),
   OZOW_PRIVATE_KEY: z.string().optional().default(''),
+  OZOW_NOTIFY_URL: z.string().optional().default(''),
+  OZOW_API_BASE_URL: z.string().optional().default('https://api.ozow.com'),
+  OZOW_IS_TEST: z
+    .string()
+    .optional()
+    .transform((value) => value === 'true' || value === '1'),
+  PUBLIC_API_URL: z.string().optional().default('http://localhost:4000'),
   PAYMENTS_PROVIDER: z.enum(['stub', 'paystack', 'payfast', 'ozow', 'wallet']).default('stub'),
   PAYSTACK_CALLBACK_URL: z.string().optional().default(''),
   REDIS_URL: z.string().optional().default(''),
@@ -104,9 +111,17 @@ export function assertProductionConfiguration() {
   requireValue('MFA_ENC_KEY', env.MFA_ENC_KEY.length >= 32);
   requireValue('COMPLETION_PIN_PEPPER', env.COMPLETION_PIN_PEPPER.length >= 32);
   requireValue('MFA_REQUIRED_OPS', env.MFA_REQUIRED_OPS);
-  requireValue('PAYSTACK_SECRET_KEY');
-  requireValue('PAYSTACK_PUBLIC_KEY');
-  requireValue('PAYSTACK_CALLBACK_URL');
+  if (env.PAYMENTS_PROVIDER === 'ozow') {
+    requireValue('OZOW_SITE_CODE');
+    requireValue('OZOW_API_KEY');
+    requireValue('OZOW_PRIVATE_KEY');
+    requireValue('OZOW_NOTIFY_URL', Boolean(env.OZOW_NOTIFY_URL || env.PUBLIC_API_URL));
+    requireValue('PUBLIC_API_URL');
+  } else {
+    requireValue('PAYSTACK_SECRET_KEY');
+    requireValue('PAYSTACK_PUBLIC_KEY');
+    requireValue('PAYSTACK_CALLBACK_URL');
+  }
   requireValue('GEOCODER_PROVIDER', env.GEOCODER_PROVIDER !== 'none');
   requireValue('ROUTING_PROVIDER', env.ROUTING_PROVIDER !== 'none');
   if (env.GEOCODER_PROVIDER === 'mapbox') requireValue('MAPBOX_ACCESS_TOKEN');
@@ -135,8 +150,8 @@ export function assertProductionConfiguration() {
     requireValue('TWILIO_FROM');
   }
 
-  if (env.PAYMENTS_PROVIDER !== 'paystack') {
-    missing.push('PAYMENTS_PROVIDER=paystack');
+  if (env.PAYMENTS_PROVIDER !== 'paystack' && env.PAYMENTS_PROVIDER !== 'ozow') {
+    missing.push('PAYMENTS_PROVIDER=paystack|ozow');
   }
   if (env.PROCESS_ROLE === 'all') {
     missing.push('PROCESS_ROLE=api or worker (run separate production processes)');

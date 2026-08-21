@@ -7,6 +7,7 @@ import { validate } from '../middleware/validate.js';
 import { HttpError } from '../middleware/error.js';
 import { enqueue } from '../lib/queue.js';
 import { verifyPaystackTransaction } from './paystack.js';
+import { ozowStatusIsPaid } from './ozow.js';
 import { applyPayoutEvent } from '../payouts/routes.js';
 import {
   applyChargeback,
@@ -75,7 +76,8 @@ paymentsRouter.post(
           customerEmail: booking.customer.user.email,
           amountCents: booking.price,
           provider: 'wallet',
-          idempotencyKey: req.body.idempotencyKey
+          idempotencyKey: req.body.idempotencyKey,
+          customerName: booking.customer.name
         });
         const paid = await completeWalletPayment({
           paymentId: payment.id,
@@ -92,7 +94,8 @@ paymentsRouter.post(
         customerEmail: booking.customer.user.email,
         amountCents: booking.price,
         provider,
-        idempotencyKey: req.body.idempotencyKey
+        idempotencyKey: req.body.idempotencyKey,
+        customerName: booking.customer.name
       });
       res.status(201).json(mapPaymentDto(payment));
     } catch (error) {
@@ -307,7 +310,7 @@ paymentsRouter.post('/webhooks/ozow', async (req, res, next) => {
     const body = req.body as Record<string, string>;
     if (!verifyOzowSignature(body)) throw new HttpError(401, 'Invalid Ozow signature');
     const paymentId = String(body.TransactionReference || body.transactionReference || '');
-    const eventId = String(body.TransactionId || paymentId);
+    const eventId = String(body.TransactionId || body.transactionId || paymentId);
     const claim = await claimWebhookReceipt({
       provider: 'ozow',
       providerEventId: eventId,
@@ -317,30 +320,37 @@ paymentsRouter.post('/webhooks/ozow', async (req, res, next) => {
       paymentId
     });
     const payment = await prisma.payment.findFirst({
-      where: { OR: [{ id: paymentId }, { externalRef: eventId }] }
+      where: {
+        OR: [
+          { id: paymentId },
+          { externalRef: eventId },
+          { externalRef: paymentId }
+        ]
+      }
     });
     if (!payment) throw new HttpError(404, 'Payment not found');
     const amountCents = Math.round(Number(body.Amount || body.amount) * 100);
-    const status = String(body.Status || body.status || '').toLowerCase();
+    const status = String(body.Status || body.status || '');
     const duplicate = await processClaimedWebhook(claim, async () => {
-      if (status === 'complete' || status === 'success') {
+      if (ozowStatusIsPaid(status)) {
         await applyPaymentSuccess({
           paymentId: payment.id,
           providerEventId: eventId,
           payload: body,
           amountCents: Number.isFinite(amountCents) ? amountCents : undefined,
-          currency: 'ZAR'
+          currency: String(body.CurrencyCode || 'ZAR')
         });
       } else {
         await applyPaymentFailed({
           paymentId: payment.id,
           providerEventId: eventId,
           payload: body,
-          reason: status
+          reason: status || String(body.StatusMessage || 'ozow_failed')
         });
       }
     });
-    res.json({ ok: true, duplicate });
+    // Ozow expects a simple 200 acknowledgement for notify callbacks.
+    res.status(200).type('text/plain').send(duplicate ? 'OK' : 'OK');
   } catch (error) {
     next(error);
   }

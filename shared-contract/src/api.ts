@@ -1075,7 +1075,7 @@ export const bookingApi = {
       destinationLocation: serviceType === 'WASH' ? null : '2029 Future Blvd',
       destinationCoordinates:
         serviceType === 'WASH' ? null : textToGeoPoint('2029 Future Blvd', 303),
-      paymentMethod: 'paystack',
+      paymentMethod: 'ozow',
       price: 42,
       ecoPoints: 50,
       status: 'PENDING',

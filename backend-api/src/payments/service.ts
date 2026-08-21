@@ -16,6 +16,10 @@ import {
   verifyPaystackSignature,
   verifyPaystackTransaction
 } from './paystack.js';
+import {
+  initializeOzow,
+  verifyOzowNotifySignature
+} from './ozow.js';
 
 export function payloadHash(payload: unknown): string {
   const bytes = Buffer.isBuffer(payload) ? payload : Buffer.from(JSON.stringify(payload));
@@ -29,6 +33,7 @@ export async function createPaymentIntent(input: {
   amountCents: number;
   provider?: PaymentProvider;
   idempotencyKey?: string;
+  customerName?: string;
 }) {
   if (input.idempotencyKey) {
     const existing = await prisma.payment.findUnique({
@@ -49,8 +54,13 @@ export async function createPaymentIntent(input: {
   }
 
   const provider = input.provider || env.PAYMENTS_PROVIDER;
-  if (env.isProduction && provider !== 'paystack' && provider !== 'wallet') {
-    throw new HttpError(400, 'Only Paystack and wallet payments are enabled in production');
+  if (
+    env.isProduction &&
+    provider !== 'paystack' &&
+    provider !== 'ozow' &&
+    provider !== 'wallet'
+  ) {
+    throw new HttpError(400, 'Only Ozow, Paystack, and wallet payments are enabled in production');
   }
   const payment = await prisma.payment.create({
     data: {
@@ -82,9 +92,13 @@ export async function createPaymentIntent(input: {
     checkoutUrl = `https://sandbox.payfast.co.za/eng/process?m_payment_id=${payment.id}&amount=${fromCents(input.amountCents)}`;
     externalRef = `pf_${payment.id}`;
   } else if (provider === 'ozow') {
-    if (!env.OZOW_SITE_CODE) throw new HttpError(503, 'Ozow is not configured');
-    checkoutUrl = `https://pay.ozow.com/?siteCode=${env.OZOW_SITE_CODE}&transactionReference=${payment.id}`;
-    externalRef = `oz_${payment.id}`;
+    const init = await initializeOzow({
+      paymentId: payment.id,
+      amountCents: input.amountCents,
+      customerName: input.customerName
+    });
+    checkoutUrl = init.checkoutUrl;
+    externalRef = init.externalRef;
   } else if (provider === 'wallet') {
     checkoutUrl = null as unknown as string;
     externalRef = `wallet_${payment.id}`;
@@ -309,17 +323,7 @@ export function verifyPayfastSignature(body: Record<string, string>): boolean {
 }
 
 export function verifyOzowSignature(body: Record<string, string>): boolean {
-  if (!env.OZOW_PRIVATE_KEY) return !env.isProduction;
-  const concat = [
-    body.SiteCode || body.siteCode || '',
-    body.TransactionId || '',
-    body.TransactionReference || body.transactionReference || '',
-    body.Amount || '',
-    body.Status || '',
-    env.OZOW_PRIVATE_KEY
-  ].join('');
-  const hash = createHash('sha512').update(concat).digest('hex');
-  return hash.toLowerCase() === String(body.Hash || body.hash || '').toLowerCase();
+  return verifyOzowNotifySignature(body);
 }
 
 export { verifyPaystackSignature };

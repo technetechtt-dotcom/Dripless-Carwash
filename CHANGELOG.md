@@ -4,6 +4,13 @@ All notable production changes are recorded here. Releases use immutable `vYYYY.
 
 ## Unreleased
 
+### Ozow payments (primary)
+
+- Implemented full Ozow instant-EFT integration: `postpaymentrequest`, SHA512 HashCheck, signed notify webhook, amount/status handling.
+- Customer checkout defaults to Ozow (wallet still available).
+- Production config accepts `PAYMENTS_PROVIDER=ozow` with required Ozow secrets.
+- Docs: `docs/OZOW.md`.
+
 ### Pilot-readiness execution
 
 - Locked Sandton pilot config (`backend-api/src/config/pilot.ts`): zone polygon, 07:00–18:00 hours, packages, add-ons, cancellation fees, driver requirements.

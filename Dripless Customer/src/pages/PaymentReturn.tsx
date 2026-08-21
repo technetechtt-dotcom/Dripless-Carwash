@@ -24,12 +24,18 @@ const PaymentReturn = () => {
   const check = useCallback(async () => {
     setState('checking');
     const pending = readPending();
-    const providerReference = params.get('reference') || params.get('trxref');
+    const providerReference =
+      params.get('reference') ||
+      params.get('trxref') ||
+      params.get('TransactionId') ||
+      params.get('paymentId');
+    const statusHint = (params.get('status') || '').toLowerCase();
     try {
       for (let attempt = 0; attempt < 12; attempt += 1) {
         const payments = await paymentsApi.list();
         const payment = payments.find((item) =>
           item.paymentId === pending?.paymentId ||
+          item.paymentId === params.get('paymentId') ||
           item.externalRef === providerReference
         );
         if (payment) {
@@ -40,13 +46,18 @@ const PaymentReturn = () => {
             setMessage('Payment verified. Your booking is ready.');
             return;
           }
-          if (['FAILED', 'REFUNDED'].includes(payment.status)) {
+          if (['FAILED', 'REFUNDED', 'CANCELLED'].includes(payment.status) || statusHint === 'cancelled' || statusHint === 'error') {
             setState('failed');
             setMessage(`Payment status: ${payment.status.toLowerCase()}.`);
             return;
           }
         }
         await new Promise((resolve) => window.setTimeout(resolve, 2500));
+      }
+      if (statusHint === 'cancelled' || statusHint === 'error') {
+        setState('failed');
+        setMessage(statusHint === 'cancelled' ? 'Payment was cancelled.' : 'Payment failed.');
+        return;
       }
       setState('pending');
       setMessage('Payment confirmation is still pending. You can safely check again.');
