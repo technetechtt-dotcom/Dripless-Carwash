@@ -9,11 +9,16 @@ import {
   interpolateGeoPoint,
   textToGeoPoint
 } from '@shared/maps';
+import GoogleMapCanvas from './GoogleMapCanvas';
+import { isGoogleMapsConfigured } from '@shared/googleMapsLoader';
+
 interface MapViewProps {
   activeJob: Job | null;
   isOnline: boolean;
 }
+
 export function MapView({ activeJob, isOnline }: MapViewProps) {
+  const useGoogle = isGoogleMapsConfigured();
   const hasActiveJob = Boolean(activeJob);
   const pickupLabel = activeJob?.pickupLocation || 'Current area';
   const destinationLabel = activeJob?.dropoffLocation || pickupLabel;
@@ -64,6 +69,16 @@ export function MapView({ activeJob, isOnline }: MapViewProps) {
   );
   const remainingKm = estimateDistanceKm(driverPoint, destinationPoint);
   const etaMinutes = estimateEtaMinutes(remainingKm);
+  const markers = useMemo(() => {
+    const rows = [
+      { id: 'pickup', position: pickupPoint, title: 'Pickup', color: '#3b82f6' },
+      { id: 'driver', position: driverPoint, title: 'You', color: '#10b981' }
+    ];
+    if (activeJob?.dropoffLocation) {
+      rows.push({ id: 'dropoff', position: destinationPoint, title: 'Dropoff', color: '#ef4444' });
+    }
+    return rows;
+  }, [pickupPoint, destinationPoint, driverPoint, activeJob?.dropoffLocation]);
 
   return (
     <div
@@ -73,31 +88,39 @@ export function MapView({ activeJob, isOnline }: MapViewProps) {
       {hasActiveJob ? (
         <>
           <div className="absolute inset-0">
-            <MapContainer
-              bounds={bounds}
-              scrollWheelZoom={false}
-              className="h-full w-full"
-              aria-label="Driver navigation map">
-              <TileLayer
-                attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-                url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+            {useGoogle ? (
+              <GoogleMapCanvas
+                markers={markers}
+                path={[pickupPoint, destinationPoint]}
+                ariaLabel="Driver navigation map"
               />
-              <Polyline positions={routePoints} pathOptions={{ color: '#10b981', weight: 5, dashArray: '8 6' }} />
-              <CircleMarker center={[pickupPoint.lat, pickupPoint.lng]} radius={8} pathOptions={{ color: '#2563eb', fillColor: '#3b82f6', fillOpacity: 1 }}>
-                <Tooltip direction="top" offset={[0, -8]}>Pickup</Tooltip>
-              </CircleMarker>
-              {activeJob?.dropoffLocation ? (
-                <CircleMarker
-                  center={[destinationPoint.lat, destinationPoint.lng]}
-                  radius={8}
-                  pathOptions={{ color: '#dc2626', fillColor: '#ef4444', fillOpacity: 1 }}>
-                  <Tooltip direction="top" offset={[0, -8]}>Dropoff</Tooltip>
+            ) : (
+              <MapContainer
+                bounds={bounds}
+                scrollWheelZoom={false}
+                className="h-full w-full"
+                aria-label="Driver navigation map">
+                <TileLayer
+                  attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+                  url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                />
+                <Polyline positions={routePoints} pathOptions={{ color: '#10b981', weight: 5, dashArray: '8 6' }} />
+                <CircleMarker center={[pickupPoint.lat, pickupPoint.lng]} radius={8} pathOptions={{ color: '#2563eb', fillColor: '#3b82f6', fillOpacity: 1 }}>
+                  <Tooltip direction="top" offset={[0, -8]}>Pickup</Tooltip>
                 </CircleMarker>
-              ) : null}
-              <CircleMarker center={[driverPoint.lat, driverPoint.lng]} radius={9} pathOptions={{ color: '#065f46', fillColor: '#10b981', fillOpacity: 1 }}>
-                <Tooltip direction="top" offset={[0, -8]}>Your live position</Tooltip>
-              </CircleMarker>
-            </MapContainer>
+                {activeJob?.dropoffLocation ? (
+                  <CircleMarker
+                    center={[destinationPoint.lat, destinationPoint.lng]}
+                    radius={8}
+                    pathOptions={{ color: '#dc2626', fillColor: '#ef4444', fillOpacity: 1 }}>
+                    <Tooltip direction="top" offset={[0, -8]}>Dropoff</Tooltip>
+                  </CircleMarker>
+                ) : null}
+                <CircleMarker center={[driverPoint.lat, driverPoint.lng]} radius={9} pathOptions={{ color: '#065f46', fillColor: '#10b981', fillOpacity: 1 }}>
+                  <Tooltip direction="top" offset={[0, -8]}>Your live position</Tooltip>
+                </CircleMarker>
+              </MapContainer>
+            )}
           </div>
           <div className="absolute top-4 right-4 bg-white/90 dark:bg-slate-800/90 backdrop-blur-md text-slate-900 dark:text-white text-[11px] font-medium px-3 py-1.5 rounded-2xl shadow-lg border border-white/20">
             ETA {etaMinutes} min
@@ -111,7 +134,7 @@ export function MapView({ activeJob, isOnline }: MapViewProps) {
             target="_blank"
             rel="noreferrer"
             className="absolute bottom-4 right-4 btn-primary text-[11px] px-3 py-2">
-            Open navigation
+            Open Google Maps
           </a>
           {!activeJob?.dropoffLocation ? (
             <div className="absolute top-4 left-4 bg-amber-100/90 dark:bg-amber-900/40 text-amber-800 dark:text-amber-200 text-[11px] font-medium px-3 py-1.5 rounded-2xl border border-amber-200/80 dark:border-amber-800/80">
@@ -136,6 +159,6 @@ export function MapView({ activeJob, isOnline }: MapViewProps) {
       )}
       <div className="absolute inset-0 pointer-events-none rounded-3xl ring-1 ring-inset ring-white/10" />
       {hasActiveJob ? <div className="sr-only">Active route from {pickupLabel} to {destinationLabel}</div> : null}
-    </div>);
-
+    </div>
+  );
 }

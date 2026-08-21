@@ -4,6 +4,14 @@ All notable production changes are recorded here. Releases use immutable `vYYYY.
 
 ## Unreleased
 
+### Google Maps API
+
+- Backend Google Places autocomplete uses Place Details for accurate lat/lng (Sandton-biased, ZA).
+- Customer / Driver / Ops maps use Google Maps JS when `VITE_GOOGLE_MAPS_API_KEY` is set (Leaflet OSM fallback otherwise).
+- Booking address fields use Places autocomplete via `/geo/autocomplete`.
+- Navigation links open Google Maps directions.
+- Docs: `docs/GOOGLE_MAPS.md`.
+
 ### Ozow payments (primary)
 
 - Implemented full Ozow instant-EFT integration: `postpaymentrequest`, SHA512 HashCheck, signed notify webhook, amount/status handling.

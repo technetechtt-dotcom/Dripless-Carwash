@@ -79,7 +79,7 @@ export function estimateEtaMinutes(distanceKm: number, speedKmPerHour = 32) {
 }
 
 export function buildNavigationUrl(from: GeoPoint, to: GeoPoint) {
-  const fromPart = `${from.lat.toFixed(6)},${from.lng.toFixed(6)}`;
-  const toPart = `${to.lat.toFixed(6)},${to.lng.toFixed(6)}`;
-  return `https://www.openstreetmap.org/directions?engine=fossgis_osrm_car&route=${fromPart}%3B${toPart}`;
+  const origin = `${from.lat.toFixed(6)},${from.lng.toFixed(6)}`;
+  const destination = `${to.lat.toFixed(6)},${to.lng.toFixed(6)}`;
+  return `https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(origin)}&destination=${encodeURIComponent(destination)}&travelmode=driving`;
 }

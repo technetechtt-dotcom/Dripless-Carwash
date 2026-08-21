@@ -5,6 +5,7 @@ import { HttpError } from '../middleware/error.js';
 export type GeoPoint = { lat: number; lng: number };
 
 const JOHANNESBURG = { lat: -26.2041, lng: 28.0473 };
+const SANDTON_BIAS = { lat: -26.1076, lng: 28.0567 };
 
 export function assertValidCoordinates(lat: number, lng: number) {
   if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
@@ -13,6 +14,31 @@ export function assertValidCoordinates(lat: number, lng: number) {
   if (lat < -90 || lat > 90 || lng < -180 || lng > 180) {
     throw new HttpError(400, 'Coordinates out of bounds');
   }
+}
+
+async function googleJson<T>(url: URL): Promise<T> {
+  const response = await fetch(url);
+  if (!response.ok) throw new HttpError(502, 'Google Maps API unavailable');
+  const body = (await response.json()) as T & { status?: string; error_message?: string };
+  const status = body.status || 'OK';
+  if (['REQUEST_DENIED', 'OVER_QUERY_LIMIT', 'INVALID_REQUEST', 'UNKNOWN_ERROR'].includes(status)) {
+    throw new HttpError(502, body.error_message || `Google Maps error: ${status}`);
+  }
+  return body;
+}
+
+async function placeDetails(placeId: string): Promise<GeoPoint | null> {
+  if (!env.GOOGLE_MAPS_API_KEY || !placeId) return null;
+  const url = new URL('https://maps.googleapis.com/maps/api/place/details/json');
+  url.searchParams.set('place_id', placeId);
+  url.searchParams.set('fields', 'geometry,formatted_address');
+  url.searchParams.set('key', env.GOOGLE_MAPS_API_KEY);
+  url.searchParams.set('region', 'za');
+  const body = await googleJson<{
+    result?: { geometry?: { location?: { lat: number; lng: number } } };
+  }>(url);
+  const location = body.result?.geometry?.location;
+  return location ? { lat: location.lat, lng: location.lng } : null;
 }
 
 async function geocodeWithProvider(label: string): Promise<GeoPoint | null> {
@@ -38,11 +64,10 @@ async function geocodeWithProvider(label: string): Promise<GeoPoint | null> {
     url.searchParams.set('address', label);
     url.searchParams.set('key', env.GOOGLE_MAPS_API_KEY);
     url.searchParams.set('region', 'za');
-    const response = await fetch(url);
-    if (!response.ok) return null;
-    const body = (await response.json()) as {
+    url.searchParams.set('components', 'country:ZA');
+    const body = await googleJson<{
       results?: Array<{ geometry?: { location?: { lat: number; lng: number } } }>;
-    };
+    }>(url);
     const location = body.results?.[0]?.geometry?.location;
     if (!location) return null;
     return { lat: location.lat, lng: location.lng };
@@ -78,15 +103,20 @@ export async function autocompleteAddress(query: string) {
     url.searchParams.set('input', label);
     url.searchParams.set('key', env.GOOGLE_MAPS_API_KEY);
     url.searchParams.set('components', 'country:za');
-    const response = await fetch(url);
-    if (!response.ok) throw new HttpError(502, 'Address provider unavailable');
-    const body = (await response.json()) as {
+    url.searchParams.set('language', 'en');
+    url.searchParams.set('location', `${SANDTON_BIAS.lat},${SANDTON_BIAS.lng}`);
+    url.searchParams.set('radius', '40000');
+    const body = await googleJson<{
       predictions?: Array<{ place_id?: string; description?: string }>;
-    };
+    }>(url);
     const predictions = body.predictions || [];
     return Promise.all(
       predictions.slice(0, 5).map(async (prediction) => {
-        const point = prediction.description ? await geocodeWithProvider(prediction.description) : null;
+        const point = prediction.place_id
+          ? await placeDetails(prediction.place_id)
+          : prediction.description
+            ? await geocodeWithProvider(prediction.description)
+            : null;
         return {
           id: prediction.place_id || prediction.description || '',
           label: prediction.description || '',

@@ -2,6 +2,8 @@ import { useMemo } from 'react';
 import { CircleMarker, MapContainer, Polyline, TileLayer, Tooltip } from 'react-leaflet';
 import type { LatLngBoundsExpression, LatLngExpression } from 'leaflet';
 import type { BookingContract } from '@shared/types';
+import GoogleMapCanvas from '../../../components/GoogleMapCanvas';
+import { isGoogleMapsConfigured } from '@shared/googleMapsLoader';
 
 type DriverLocationRow = {
   driverId: string;
@@ -23,6 +25,7 @@ type DispatchMapPanelProps = {
 };
 
 export const DispatchMapPanel = ({ driverLocations, bookings }: DispatchMapPanelProps) => {
+  const useGoogle = isGoogleMapsConfigured();
   const activeRoutes = useMemo(() => {
     return bookings
       .filter((booking) =>
@@ -70,81 +73,134 @@ export const DispatchMapPanel = ({ driverLocations, bookings }: DispatchMapPanel
     ];
   }, [activeRoutes, mappedDrivers]);
 
+  const googleMarkers = useMemo(() => {
+    const rows: Array<{ id: string; position: { lat: number; lng: number }; title: string; color: string }> = [];
+    for (const booking of activeRoutes) {
+      if (booking.pickupCoordinates) {
+        rows.push({
+          id: `pickup-${booking.id}`,
+          position: booking.pickupCoordinates,
+          title: `Pickup ${booking.id}`,
+          color: '#3b82f6'
+        });
+      }
+      if (booking.destinationCoordinates) {
+        rows.push({
+          id: `dropoff-${booking.id}`,
+          position: booking.destinationCoordinates,
+          title: `Dropoff ${booking.id}`,
+          color: '#ef4444'
+        });
+      }
+    }
+    for (const driver of mappedDrivers) {
+      if (!driver.location) continue;
+      rows.push({
+        id: driver.driverId,
+        position: { lat: driver.location.lat, lng: driver.location.lng },
+        title: `${driver.driverName} (${driver.status})`,
+        color: '#10b981'
+      });
+    }
+    return rows;
+  }, [activeRoutes, mappedDrivers]);
+
+  const googlePath = useMemo(() => {
+    const points: Array<{ lat: number; lng: number }> = [];
+    for (const booking of activeRoutes) {
+      const pickup = booking.pickupCoordinates;
+      const destination = booking.destinationCoordinates ?? booking.pickupCoordinates;
+      if (pickup && destination) {
+        points.push(pickup, destination);
+      }
+    }
+    return points;
+  }, [activeRoutes]);
+
   return (
     <div className="card stack">
       <h3 style={{ margin: 0 }}>Live fleet map</h3>
       <p className="muted" style={{ margin: 0 }}>
-        Driver positions and active pickup/dropoff routes.
+        Driver positions and active pickup/dropoff routes
+        {useGoogle ? ' (Google Maps).' : ' (OpenStreetMap fallback).'}
       </p>
       <div style={{ height: 320, borderRadius: 12, overflow: 'hidden' }}>
-        <MapContainer bounds={bounds} scrollWheelZoom={false} style={{ height: '100%', width: '100%' }}>
-          <TileLayer
-            attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-            url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+        {useGoogle ? (
+          <GoogleMapCanvas
+            markers={googleMarkers}
+            path={googlePath}
+            ariaLabel="Live fleet map"
           />
+        ) : (
+          <MapContainer bounds={bounds} scrollWheelZoom={false} style={{ height: '100%', width: '100%' }}>
+            <TileLayer
+              attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+              url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+            />
 
-          {activeRoutes.map((booking) => {
-            const pickup = booking.pickupCoordinates;
-            const destination = booking.destinationCoordinates ?? booking.pickupCoordinates;
-            if (!pickup || !destination) return null;
-            const polyline: LatLngExpression[] = [
-              [pickup.lat, pickup.lng],
-              [destination.lat, destination.lng]
-            ];
-            return (
-              <Polyline
-                key={`route-${booking.id}`}
-                positions={polyline}
-                pathOptions={{ color: '#10b981', weight: 4, dashArray: '7 6' }}
-              />
-            );
-          })}
+            {activeRoutes.map((booking) => {
+              const pickup = booking.pickupCoordinates;
+              const destination = booking.destinationCoordinates ?? booking.pickupCoordinates;
+              if (!pickup || !destination) return null;
+              const polyline: LatLngExpression[] = [
+                [pickup.lat, pickup.lng],
+                [destination.lat, destination.lng]
+              ];
+              return (
+                <Polyline
+                  key={`route-${booking.id}`}
+                  positions={polyline}
+                  pathOptions={{ color: '#10b981', weight: 4, dashArray: '7 6' }}
+                />
+              );
+            })}
 
-          {activeRoutes.map((booking) => {
-            if (!booking.pickupCoordinates) return null;
-            return (
-              <CircleMarker
-                key={`pickup-${booking.id}`}
-                center={[booking.pickupCoordinates.lat, booking.pickupCoordinates.lng]}
-                radius={6}
-                pathOptions={{ color: '#2563eb', fillColor: '#3b82f6', fillOpacity: 1 }}>
-                <Tooltip direction="top" offset={[0, -8]}>
-                  {`Pickup ${booking.id}`}
-                </Tooltip>
-              </CircleMarker>
-            );
-          })}
+            {activeRoutes.map((booking) => {
+              if (!booking.pickupCoordinates) return null;
+              return (
+                <CircleMarker
+                  key={`pickup-${booking.id}`}
+                  center={[booking.pickupCoordinates.lat, booking.pickupCoordinates.lng]}
+                  radius={6}
+                  pathOptions={{ color: '#2563eb', fillColor: '#3b82f6', fillOpacity: 1 }}>
+                  <Tooltip direction="top" offset={[0, -8]}>
+                    {`Pickup ${booking.id}`}
+                  </Tooltip>
+                </CircleMarker>
+              );
+            })}
 
-          {activeRoutes.map((booking) => {
-            if (!booking.destinationCoordinates) return null;
-            return (
-              <CircleMarker
-                key={`dropoff-${booking.id}`}
-                center={[booking.destinationCoordinates.lat, booking.destinationCoordinates.lng]}
-                radius={6}
-                pathOptions={{ color: '#dc2626', fillColor: '#ef4444', fillOpacity: 1 }}>
-                <Tooltip direction="top" offset={[0, -8]}>
-                  {`Dropoff ${booking.id}`}
-                </Tooltip>
-              </CircleMarker>
-            );
-          })}
+            {activeRoutes.map((booking) => {
+              if (!booking.destinationCoordinates) return null;
+              return (
+                <CircleMarker
+                  key={`dropoff-${booking.id}`}
+                  center={[booking.destinationCoordinates.lat, booking.destinationCoordinates.lng]}
+                  radius={6}
+                  pathOptions={{ color: '#dc2626', fillColor: '#ef4444', fillOpacity: 1 }}>
+                  <Tooltip direction="top" offset={[0, -8]}>
+                    {`Dropoff ${booking.id}`}
+                  </Tooltip>
+                </CircleMarker>
+              );
+            })}
 
-          {mappedDrivers.map((driver) => {
-            if (!driver.location) return null;
-            return (
-              <CircleMarker
-                key={driver.driverId}
-                center={[driver.location.lat, driver.location.lng]}
-                radius={7}
-                pathOptions={{ color: '#065f46', fillColor: '#10b981', fillOpacity: 1 }}>
-                <Tooltip direction="top" offset={[0, -8]}>
-                  {`${driver.driverName} (${driver.status})`}
-                </Tooltip>
-              </CircleMarker>
-            );
-          })}
-        </MapContainer>
+            {mappedDrivers.map((driver) => {
+              if (!driver.location) return null;
+              return (
+                <CircleMarker
+                  key={driver.driverId}
+                  center={[driver.location.lat, driver.location.lng]}
+                  radius={7}
+                  pathOptions={{ color: '#065f46', fillColor: '#10b981', fillOpacity: 1 }}>
+                  <Tooltip direction="top" offset={[0, -8]}>
+                    {`${driver.driverName} (${driver.status})`}
+                  </Tooltip>
+                </CircleMarker>
+              );
+            })}
+          </MapContainer>
+        )}
       </div>
     </div>
   );

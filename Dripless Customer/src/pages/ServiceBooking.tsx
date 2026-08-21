@@ -19,6 +19,7 @@ import { motion } from 'framer-motion';
 import CarWashPackages from '../components/CarWashPackages';
 import CheckoutModal from '../components/CheckoutModal';
 import LocationPickerMap from '../components/LocationPickerMap';
+import AddressAutocomplete from '../components/AddressAutocomplete';
 import { apiRuntimeConfig, catalogApi, customerAccountApi, specialsApi } from '@shared/api';
 import type { OpsSpecial, SpecialServiceScope } from '@shared/types';
 import { ROUTES } from '../utils/routes';
@@ -891,20 +892,25 @@ const ServiceBooking = () => {
                   Pickup Address
                 </label>
                 <div className="relative">
-                  <input
-                  type="text"
-                  placeholder="Enter pickup address"
-                  className="w-full p-3.5 bg-white/70 dark:bg-slate-800/60 backdrop-blur border border-slate-200 dark:border-slate-700 rounded-xl pl-11 pr-20 focus:ring-2 focus:ring-eco-500 focus:border-transparent outline-none transition-all dark:text-white placeholder:text-slate-400"
-                  value={pickupAddress}
-                  onChange={(e) => {
-                    setPickupAddress(e.target.value);
-                    setPickupCoordinates(null);
-                  }}
-                  required />
+                  <AddressAutocomplete
+                    value={pickupAddress}
+                    placeholder="Enter pickup address"
+                    inputClassName="w-full p-3.5 bg-white/70 dark:bg-slate-800/60 backdrop-blur border border-slate-200 dark:border-slate-700 rounded-xl pl-11 pr-20 focus:ring-2 focus:ring-eco-500 focus:border-transparent outline-none transition-all dark:text-white placeholder:text-slate-400"
+                    onChange={(next) => {
+                      setPickupAddress(next);
+                      setPickupCoordinates(null);
+                    }}
+                    onSelect={(suggestion) => {
+                      setPickupAddress(suggestion.label);
+                      if (suggestion.lat != null && suggestion.lng != null) {
+                        setPickupCoordinates({ lat: suggestion.lat, lng: suggestion.lng });
+                      }
+                    }}
+                  />
 
                   <MapPinIcon
                   size={18}
-                  className="absolute left-3.5 top-4 text-slate-400" />
+                  className="absolute left-3.5 top-4 text-slate-400 pointer-events-none" />
 
                   <div className="absolute right-3 top-3 flex space-x-1">
                     <button
@@ -975,24 +981,27 @@ const ServiceBooking = () => {
                 'Delivery Address'}
                 </label>
                 <div className="relative">
-                  <input
-                  type="text"
-                  placeholder={
-                  service === 'taxi' ?
-                  'Enter destination' :
-                  'Enter delivery address'
-                  }
-                  className="w-full p-3.5 bg-white/70 dark:bg-slate-800/60 backdrop-blur border border-slate-200 dark:border-slate-700 rounded-xl pl-11 pr-20 focus:ring-2 focus:ring-eco-500 focus:border-transparent outline-none transition-all dark:text-white placeholder:text-slate-400"
-                  value={destinationAddress}
-                  onChange={(e) => {
-                    setDestinationAddress(e.target.value);
-                    setDestinationCoordinates(null);
-                  }}
-                  required />
+                  <AddressAutocomplete
+                    value={destinationAddress}
+                    placeholder={
+                      service === 'taxi' ? 'Enter destination' : 'Enter delivery address'
+                    }
+                    inputClassName="w-full p-3.5 bg-white/70 dark:bg-slate-800/60 backdrop-blur border border-slate-200 dark:border-slate-700 rounded-xl pl-11 pr-20 focus:ring-2 focus:ring-eco-500 focus:border-transparent outline-none transition-all dark:text-white placeholder:text-slate-400"
+                    onChange={(next) => {
+                      setDestinationAddress(next);
+                      setDestinationCoordinates(null);
+                    }}
+                    onSelect={(suggestion) => {
+                      setDestinationAddress(suggestion.label);
+                      if (suggestion.lat != null && suggestion.lng != null) {
+                        setDestinationCoordinates({ lat: suggestion.lat, lng: suggestion.lng });
+                      }
+                    }}
+                  />
 
                   <MapPinIcon
                   size={18}
-                  className="absolute left-3.5 top-4 text-slate-400" />
+                  className="absolute left-3.5 top-4 text-slate-400 pointer-events-none" />
 
                   <div className="absolute right-3 top-3 flex space-x-1">
                     <button
@@ -1113,20 +1122,25 @@ const ServiceBooking = () => {
                 Location
               </label>
               <div className="relative">
-                <input
-                type="text"
-                placeholder="Enter your address"
-                className="w-full p-3.5 bg-white/70 dark:bg-slate-800/60 backdrop-blur border border-slate-200 dark:border-slate-700 rounded-xl pl-11 pr-20 focus:ring-2 focus:ring-eco-500 focus:border-transparent outline-none transition-all dark:text-white placeholder:text-slate-400"
-                value={pickupAddress}
-                onChange={(e) => {
-                  setPickupAddress(e.target.value);
-                  setPickupCoordinates(null);
-                }}
-                required />
+                <AddressAutocomplete
+                  value={pickupAddress}
+                  placeholder="Enter your address"
+                  inputClassName="w-full p-3.5 bg-white/70 dark:bg-slate-800/60 backdrop-blur border border-slate-200 dark:border-slate-700 rounded-xl pl-11 pr-20 focus:ring-2 focus:ring-eco-500 focus:border-transparent outline-none transition-all dark:text-white placeholder:text-slate-400"
+                  onChange={(next) => {
+                    setPickupAddress(next);
+                    setPickupCoordinates(null);
+                  }}
+                  onSelect={(suggestion) => {
+                    setPickupAddress(suggestion.label);
+                    if (suggestion.lat != null && suggestion.lng != null) {
+                      setPickupCoordinates({ lat: suggestion.lat, lng: suggestion.lng });
+                    }
+                  }}
+                />
 
                 <MapPinIcon
                 size={18}
-                className="absolute left-3.5 top-4 text-slate-400" />
+                className="absolute left-3.5 top-4 text-slate-400 pointer-events-none" />
 
                 <div className="absolute right-3 top-3 flex space-x-1">
                   <button
