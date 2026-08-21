@@ -15,13 +15,17 @@ ENV NODE_ENV=production
 RUN apk add --no-cache python3 py3-pip curl && \
     pip3 install --no-cache-dir reportlab --break-system-packages 2>/dev/null || \
     apk add --no-cache py3-reportlab && \
-    ln -sf /usr/bin/python3 /usr/local/bin/python
+    ln -sf /usr/bin/python3 /usr/local/bin/python && \
+    addgroup -S dripless && adduser -S dripless -G dripless && \
+    mkdir -p /app/data && chown -R dripless:dripless /app
 
-COPY --from=build /app/node_modules ./node_modules
-COPY --from=build /app/dist ./dist
-COPY --from=build /app/prisma ./prisma
-COPY --from=build /app/src/invoices/generate_invoice.py ./src/invoices/generate_invoice.py
-COPY package.json ./
+COPY --from=build --chown=dripless:dripless /app/node_modules ./node_modules
+COPY --from=build --chown=dripless:dripless /app/dist ./dist
+COPY --from=build --chown=dripless:dripless /app/prisma ./prisma
+COPY --from=build --chown=dripless:dripless /app/src/invoices/generate_invoice.py ./src/invoices/generate_invoice.py
+COPY --chown=dripless:dripless package.json ./
+
+USER dripless
 
 EXPOSE 4000
 
