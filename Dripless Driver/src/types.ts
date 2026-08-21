@@ -28,13 +28,13 @@ export interface Driver {
   id: string;
   name: string;
   email: string;
-  phone?: string;
+  phone?: string | null;
   vehicle: string;
-  plateNumber?: string;
+  plateNumber?: string | null;
   rating: number;
   ecoPoints: number;
   memberSince: string;
-  avatarUrl?: string;
+  avatarUrl?: string | null;
   status?: string;
   verificationStatus?: 'PENDING' | 'VERIFIED' | 'REJECTED' | 'SUSPENDED' | 'EXPIRED';
 }

@@ -186,7 +186,17 @@ async function main() {
   if (carWash) {
     await prisma.washPackage.upsert({
       where: { serviceId_slug: { serviceId: carWash.id, slug: 'express' } },
-      update: {},
+      update: {
+        name: 'Express exterior',
+        durationMinutes: 35,
+        sedanCents: 1599,
+        suvCents: 1899,
+        bakkieCents: 2099,
+        truckCents: 2499,
+        waterLitresEstimate: 1.5,
+        traditionalLitres: 150,
+        active: true
+      },
       create: {
         serviceId: carWash.id,
         slug: 'express',
@@ -195,12 +205,40 @@ async function main() {
         sedanCents: 1599,
         suvCents: 1899,
         bakkieCents: 2099,
-        truckCents: 2499
+        truckCents: 2499,
+        waterLitresEstimate: 1.5,
+        traditionalLitres: 150
+      }
+    });
+    await prisma.washPackage.upsert({
+      where: { serviceId_slug: { serviceId: carWash.id, slug: 'full-valet' } },
+      update: {
+        name: 'Full valet',
+        durationMinutes: 55,
+        sedanCents: 2499,
+        suvCents: 2899,
+        bakkieCents: 3099,
+        truckCents: 3599,
+        waterLitresEstimate: 2.0,
+        traditionalLitres: 180,
+        active: true
+      },
+      create: {
+        serviceId: carWash.id,
+        slug: 'full-valet',
+        name: 'Full valet',
+        durationMinutes: 55,
+        sedanCents: 2499,
+        suvCents: 2899,
+        bakkieCents: 3099,
+        truckCents: 3599,
+        waterLitresEstimate: 2.0,
+        traditionalLitres: 180
       }
     });
     await prisma.serviceAddOn.upsert({
       where: { serviceId_slug: { serviceId: carWash.id, slug: 'mats' } },
-      update: {},
+      update: { name: 'Mat cleaning', priceCents: 350, durationMinutes: 10, active: true },
       create: {
         serviceId: carWash.id,
         slug: 'mats',
@@ -211,7 +249,7 @@ async function main() {
     });
     await prisma.serviceAddOn.upsert({
       where: { serviceId_slug: { serviceId: carWash.id, slug: 'upholstery' } },
-      update: {},
+      update: { name: 'Upholstery clean', priceCents: 900, durationMinutes: 20, active: true },
       create: {
         serviceId: carWash.id,
         slug: 'upholstery',
@@ -220,23 +258,88 @@ async function main() {
         durationMinutes: 20
       }
     });
+    await prisma.serviceAddOn.upsert({
+      where: { serviceId_slug: { serviceId: carWash.id, slug: 'interior-only' } },
+      update: { name: 'Interior detail add-on', priceCents: 700, durationMinutes: 15, active: true },
+      create: {
+        serviceId: carWash.id,
+        slug: 'interior-only',
+        name: 'Interior detail add-on',
+        priceCents: 700,
+        durationMinutes: 15
+      }
+    });
   }
 
   await prisma.serviceArea.upsert({
     where: { slug: 'sandton-pilot' },
-    update: { active: true },
-    create: {
+    update: {
+      active: true,
       name: 'Sandton pilot',
-      slug: 'sandton-pilot',
+      operatingFrom: '07:00',
+      operatingTo: '18:00',
+      weatherHold: false,
       polygonGeoJson: {
         type: 'Polygon',
         coordinates: [[
-          [27.95, -26.15],
-          [28.15, -26.15],
-          [28.15, -26.05],
-          [27.95, -26.05],
-          [27.95, -26.15]
+          [28.02, -26.13],
+          [28.1, -26.13],
+          [28.1, -26.07],
+          [28.02, -26.07],
+          [28.02, -26.13]
         ]]
+      }
+    },
+    create: {
+      name: 'Sandton pilot',
+      slug: 'sandton-pilot',
+      operatingFrom: '07:00',
+      operatingTo: '18:00',
+      polygonGeoJson: {
+        type: 'Polygon',
+        coordinates: [[
+          [28.02, -26.13],
+          [28.1, -26.13],
+          [28.1, -26.07],
+          [28.02, -26.07],
+          [28.02, -26.13]
+        ]]
+      }
+    }
+  });
+
+  await prisma.platformSetting.upsert({
+    where: { key: 'pilot.area.slug' },
+    update: { value: 'sandton-pilot' },
+    create: { key: 'pilot.area.slug', value: 'sandton-pilot' }
+  });
+  await prisma.platformSetting.upsert({
+    where: { key: 'pilot.cancellation.afterDispatchFeeCents' },
+    update: { value: 2500 },
+    create: { key: 'pilot.cancellation.afterDispatchFeeCents', value: 2500 }
+  });
+  await prisma.platformSetting.upsert({
+    where: { key: 'pilot.payments.sandboxOnly' },
+    update: { value: true },
+    create: { key: 'pilot.payments.sandboxOnly', value: true }
+  });
+  await prisma.platformSetting.upsert({
+    where: { key: 'pilot.config' },
+    update: {
+      value: {
+        area: 'sandton-pilot',
+        operatingFrom: '07:00',
+        operatingTo: '18:00',
+        afterDispatchFeeCents: 2500
+      }
+    },
+    create: {
+      key: 'pilot.config',
+      value: {
+        area: 'sandton-pilot',
+        operatingFrom: '07:00',
+        operatingTo: '18:00',
+        afterDispatchFeeCents: 2500
       }
     }
   });

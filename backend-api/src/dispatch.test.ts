@@ -33,11 +33,12 @@ describe('dispatch race conditions and RBAC', () => {
         passwordHash: await hashPassword('OpsPass123!'),
         role: 'ops_admin',
         emailVerifiedAt: new Date(),
+        mfaEnabled: true,
         opsProfile: {
           create: {
             id: `dispatch_ops_${suffix}`,
             name: 'Dispatch Ops',
-            permissions: ['bookings:read', 'bookings:manage', 'drivers:read', 'dispatch:manage']
+            permissions: ['bookings:read', 'bookings:manage', 'bookings:assign', 'drivers:read', 'dispatch:manage']
           }
         }
       }
@@ -62,9 +63,13 @@ describe('dispatch race conditions and RBAC', () => {
         }
       }
     });
-    driverId = driverUser.driverProfile ? `dispatch_drv_${suffix}` : '';
     const drv = await prisma.driverProfile.findFirst({ where: { userId: driverUser.id } });
-    if (drv) driverId = drv.id;
+    driverId = drv!.id;
+    await prisma.driverLocation.upsert({
+      where: { driverId },
+      update: { lat: -26.1, lng: 28.05, updatedAt: new Date() },
+      create: { driverId, lat: -26.1, lng: 28.05 }
+    });
     driverAccessToken = (await issueSessionTokens(driverUser.id, { authMethod: 'PASSWORD' })).accessToken;
 
     const custUser = await prisma.user.create({
@@ -98,39 +103,35 @@ describe('dispatch race conditions and RBAC', () => {
     bookingId = booking.id;
   });
 
-  it('prevents double assignment: second concurrent assign should fail or be a no-op', async () => {
-    expect(bookingId).toBeTruthy();
-    expect(driverId).toBeTruthy();
-
+  it('prevents double assignment: second concurrent assign conflicts or is idempotent', async () => {
+    const body = { driverId, reason: 'Manual pilot assignment for concurrent race test' };
     const [result1, result2] = await Promise.all([
       request(app)
-        .patch(`/bookings/${bookingId}/assign`)
+        .patch(`/ops/bookings/${bookingId}/assign-driver`)
         .set('Authorization', `Bearer ${opsAccessToken}`)
-        .send({ driverId }),
+        .send(body),
       request(app)
-        .patch(`/bookings/${bookingId}/assign`)
+        .patch(`/ops/bookings/${bookingId}/assign-driver`)
         .set('Authorization', `Bearer ${opsAccessToken}`)
-        .send({ driverId })
+        .send(body)
     ]);
 
-    const statuses = [result1.status, result2.status];
-    // At least one must succeed (200/201) and the other should be 200 (idempotent) or 409 (conflict)
-    expect(statuses.some((s) => s === 200 || s === 204 || s === 409 || s === 400)).toBe(true);
+    const statuses = [result1.status, result2.status].sort();
+    expect(statuses.some((s) => s === 200)).toBe(true);
+    expect(statuses.every((s) => [200, 409, 400].includes(s))).toBe(true);
 
-    const booking = await prisma.booking.findUnique({ where: { id: bookingId } });
-    if (booking?.driverId) {
-      expect(booking.driverId).toBe(driverId);
-    }
+    const booking = await prisma.booking.findUniqueOrThrow({ where: { id: bookingId } });
+    expect(booking.driverId).toBe(driverId);
   });
 
-  it('driver cannot access ops-only booking management endpoints', async () => {
+  it('driver cannot access ops booking list', async () => {
     const response = await request(app)
       .get('/ops/bookings')
       .set('Authorization', `Bearer ${driverAccessToken}`);
     expect([403, 401]).toContain(response.status);
   });
 
-  it('customer cannot assign drivers', async () => {
+  it('customer cannot assign drivers via ops assign endpoint', async () => {
     const custSignup = await request(app).post('/auth/customer/signup').send({
       name: 'Unauth Customer',
       email: `unauth_${Date.now()}@test.dripless.local`,
@@ -138,13 +139,13 @@ describe('dispatch race conditions and RBAC', () => {
     });
     const custToken = custSignup.body.session.tokens.accessToken;
     const response = await request(app)
-      .patch(`/bookings/${bookingId}/assign`)
+      .patch(`/ops/bookings/${bookingId}/assign-driver`)
       .set('Authorization', `Bearer ${custToken}`)
-      .send({ driverId });
+      .send({ driverId, reason: 'Customer should not be able to assign' });
     expect([403, 401]).toContain(response.status);
   });
 
-  it('ops without dispatch:manage permission cannot force-assign', async () => {
+  it('ops without bookings:assign permission cannot force-assign', async () => {
     const suffix2 = `nodispatch_${Date.now()}`;
     const limitedOps = await prisma.user.create({
       data: {
@@ -152,11 +153,12 @@ describe('dispatch race conditions and RBAC', () => {
         passwordHash: await hashPassword('OpsPass123!'),
         role: 'ops_admin',
         emailVerifiedAt: new Date(),
+        mfaEnabled: true,
         opsProfile: {
           create: {
             id: `limited_${suffix2}`,
             name: 'Limited Ops',
-            permissions: ['bookings:read'] // no dispatch:manage
+            permissions: ['bookings:read']
           }
         }
       }
@@ -165,9 +167,9 @@ describe('dispatch race conditions and RBAC', () => {
       await issueSessionTokens(limitedOps.id, { authMethod: 'TOTP', mfaVerified: true })
     ).accessToken;
     const response = await request(app)
-      .patch(`/bookings/${bookingId}/assign`)
+      .patch(`/ops/bookings/${bookingId}/assign-driver`)
       .set('Authorization', `Bearer ${limitedToken}`)
-      .send({ driverId });
+      .send({ driverId, reason: 'Should be forbidden without bookings:assign' });
     expect([403, 401]).toContain(response.status);
   });
 });
@@ -189,9 +191,7 @@ describe('pricing engine', () => {
       role: 'customer',
       userId: 'test_user'
     });
-    expect(typeof sedanPrice.price).toBe('number');
     expect(sedanPrice.price).toBeGreaterThan(0);
-    // SUV should cost the same or more than sedan
     expect(suvPrice.price).toBeGreaterThanOrEqual(sedanPrice.price);
   });
 
@@ -203,10 +203,9 @@ describe('pricing engine', () => {
       role: 'customer',
       userId: 'test_user'
     });
-    // Create a surcharge rule for muddy condition
-    await (await import('./db/prisma.js')).prisma.pricingRule.upsert({
+    await prisma.pricingRule.upsert({
       where: { id: 'test-muddy-rule' },
-      update: { amountCents: 500 },
+      update: { amountCents: 500, active: true, condition: 'muddy' },
       create: {
         id: 'test-muddy-rule',
         name: 'Muddy surcharge',
@@ -230,37 +229,57 @@ describe('pricing engine', () => {
 
 describe('service area enforcement', () => {
   it('rejects booking outside any active service zone', async () => {
+    const email = `ooz_${Date.now()}@test.dripless.local`;
     const signup = await request(app).post('/auth/customer/signup').send({
       name: 'Out of Zone',
-      email: `ooz_${Date.now()}@test.dripless.local`,
+      email,
       password: 'SecurePass123!'
     });
     await prisma.user.update({
-      where: { email: signup.body.profile?.email || '' },
+      where: { email },
       data: { emailVerifiedAt: new Date() }
     });
 
-    await prisma.serviceArea.create({
-      data: {
-        name: 'Sandton',
-        slug: `sandton_${Date.now()}`,
+    await prisma.serviceArea.upsert({
+      where: { slug: 'sandton-pilot' },
+      update: {
         active: true,
+        operatingFrom: '06:00',
+        operatingTo: '20:00',
         polygonGeoJson: {
           type: 'Polygon',
           coordinates: [
             [
-              [28.04, -26.12],
-              [28.08, -26.12],
-              [28.08, -26.08],
-              [28.04, -26.08],
-              [28.04, -26.12]
+              [28.0, -26.14],
+              [28.1, -26.14],
+              [28.1, -26.08],
+              [28.0, -26.08],
+              [28.0, -26.14]
+            ]
+          ]
+        }
+      },
+      create: {
+        name: 'Sandton pilot',
+        slug: 'sandton-pilot',
+        active: true,
+        operatingFrom: '06:00',
+        operatingTo: '20:00',
+        polygonGeoJson: {
+          type: 'Polygon',
+          coordinates: [
+            [
+              [28.0, -26.14],
+              [28.1, -26.14],
+              [28.1, -26.08],
+              [28.0, -26.08],
+              [28.0, -26.14]
             ]
           ]
         }
       }
     });
 
-    // Coordinates in Cape Town — far outside Sandton
     const booking = await request(app)
       .post('/bookings')
       .set('Authorization', `Bearer ${signup.body.session.tokens.accessToken}`)
@@ -271,8 +290,7 @@ describe('service area enforcement', () => {
         pickupCoordinates: { lat: -33.9249, lng: 18.4241 }
       });
 
-    // Should be rejected (400) or accepted without a service area if zones enforce strictly
-    // In production mode this would fail; in test/demo mode it may pass with no zone
-    expect([200, 201, 400, 422]).toContain(booking.status);
+    expect(booking.status).toBe(400);
+    expect(String(booking.body.message || '')).toMatch(/outside|service area/i);
   });
 });

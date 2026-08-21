@@ -4,6 +4,14 @@ All notable production changes are recorded here. Releases use immutable `vYYYY.
 
 ## Unreleased
 
+### Pilot-readiness execution
+
+- Locked Sandton pilot config (`backend-api/src/config/pilot.ts`): zone polygon, 07:00–18:00 hours, packages, add-ons, cancellation fees, driver requirements.
+- Seed + PlatformSetting now persist the locked pilot zone and policy keys.
+- Added critical-path backend test: book → pay → assign → wash gate → complete → earning (+ unverified driver deny).
+- Fixed CI breakers: Ops Finance types, Driver `phone: null`, dispatch assign endpoint/RBAC tests.
+- Added `docs/CLOSED_PILOT_RUNBOOK.md`, refreshed `docs/PILOT.md`, added `docs/ENVIRONMENTS.md`.
+
 ### Platform hardening and pilot readiness
 
 - Added separate `docker-compose.staging.yml` and `docker-compose.production.yml` with environment separation.

@@ -93,6 +93,7 @@ export interface AdminAudit {
 
 export interface BookingContract {
   id: string;
+  reference?: string;
   customerId?: string;
   driverId?: string;
   serviceType: ServiceType;
@@ -109,6 +110,7 @@ export interface BookingContract {
     lng: number;
   } | null;
   paymentMethod: string;
+  paymentStatus?: string;
   price: number;
   basePrice?: number;
   specialDiscountAmount?: number;

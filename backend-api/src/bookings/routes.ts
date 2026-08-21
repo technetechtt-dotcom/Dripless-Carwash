@@ -738,6 +738,7 @@ bookingsRouter.post(
 );
 
 function cancellationPolicy(status: string) {
+  // Locked Sandton pilot rules (see backend-api/src/config/pilot.ts)
   if (status === 'PENDING' || status === 'CONFIRMED') {
     return {
       refundable: true,
@@ -749,7 +750,7 @@ function cancellationPolicy(status: string) {
     return {
       refundable: true,
       feeCents: 2500,
-      summary: 'R25.00 cancellation fee after dispatch.'
+      summary: 'R25.00 cancellation fee after dispatch (Sandton pilot policy).'
     };
   }
   return {

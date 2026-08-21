@@ -1,30 +1,72 @@
-# Pilot readiness
+# Closed Pilot — Locked Configuration
 
-Pilot area: Sandton (`sandton-pilot` service zone).
+**Pilot area (locked):** Sandton — slug `sandton-pilot`  
+**Source of truth:** `backend-api/src/config/pilot.ts` (seeded by `prisma/seed.ts`)
 
-## Before first real wash
+Do **not** expand the polygon or add a second city until the critical milestone passes.
 
-- [ ] Staging and production databases are separate
-- [ ] Paystack live keys only in production
-- [ ] Mapbox or Google geocoding keys configured
-- [ ] FCM server key configured for push
-- [ ] Object storage configured for evidence
-- [ ] MFA enabled for every ops admin
-- [ ] Database restore drill completed
-- [ ] `/health` and `/ready` monitored
-- [ ] Cancellation/refund policy reviewed with support
+## Service zone
 
-## Test script
+| Field | Value |
+|-------|--------|
+| Name | Sandton pilot |
+| Slug | `sandton-pilot` |
+| Hours | **07:00–18:00** Africa/Johannesburg |
+| Weather hold | Off by default |
+| Polygon | See `PILOT_CONFIG.area.polygon` (Sandton CBD / northern suburbs) |
 
-1. Customer registers, verifies email, saves a vehicle and address.
-2. Book a wash inside the zone; pay with stub/Paystack.
-3. Driver receives job, accepts, uploads before/after photos, completes PIN.
-4. Decline and timeout redispatches.
-5. Cancel before en route (full refund) and after dispatch (fee).
-6. Failed payment retries and Ops payment-failure KPI increments.
-7. Driver goes offline; job is not assigned to them.
-8. Poor GPS: location still accepted, spoof flag if jump is extreme.
-9. Ops handles an incident and a complaint.
-10. Restore a backup into staging.
+Bookings outside the polygon or outside operating hours are rejected by `assertInServiceArea`.
 
-Collect customer and driver feedback, then fix blockers before expanding the zone.
+## Packages (ZAR cents)
+
+| Package | Sedan | SUV | Bakkie | Truck | Duration |
+|---------|------:|----:|-------:|------:|---------:|
+| Express exterior | R15.99 | R18.99 | R20.99 | R24.99 | 35 min |
+| Full valet | R24.99 | R28.99 | R30.99 | R35.99 | 55 min |
+
+## Add-ons
+
+| Add-on | Price | Duration |
+|--------|------:|---------:|
+| Mat cleaning | R3.50 | 10 min |
+| Upholstery clean | R9.00 | 20 min |
+| Interior detail add-on | R7.00 | 15 min |
+
+## Surcharges
+
+| Rule | Amount |
+|------|-------:|
+| Heavy dirt / mud (`HEAVY_DIRT`) | R5.00 |
+
+## Cancellation (locked)
+
+| Booking state | Refund | Fee |
+|---------------|--------|----:|
+| PENDING / CONFIRMED (before en route) | Full | R0 |
+| EN_ROUTE / ARRIVED | Refund minus fee | R25.00 |
+| IN_PROGRESS / COMPLETED | No refund | — |
+
+## Driver requirements (non-negotiable for live dispatch)
+
+- Status `ACTIVE`, verification `VERIFIED`
+- Online with GPS fresher than **120 seconds**
+- Approved, non-expired: SA ID, driver's licence, vehicle registration
+- Allocated equipment without open fault
+- Consumables stock > 0
+
+## Payments
+
+- **Sandbox / test Paystack only** until payment suite is green
+- Live keys only in production env after signed webhook + refund + reconciliation proofs
+- Currency: ZAR
+
+## Critical milestone (must pass on staging)
+
+```
+Customer registers → books inside zone → pays (sandbox) →
+driver dispatched → arrives → inspection → before photos →
+checklist → after photos → completion PIN → COMPLETED →
+driver earning recorded → receipt/invoice → Ops audit trail
+```
+
+See `docs/CLOSED_PILOT_RUNBOOK.md` for the day-of execution script.

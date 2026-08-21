@@ -162,7 +162,7 @@ export function FinanceSection({ analytics, bookings }: FinanceSectionProps) {
   }
 
   const kpiRevenue = useMemo(() => {
-    if (analytics) return analytics.totalRevenue ?? 0;
+    if (analytics) return Math.round((analytics.revenue ?? 0) * 100);
     return payments.filter((p) => p.status === 'PAID').reduce((sum, p) => sum + p.amountCents, 0);
   }, [analytics, payments]);
 
@@ -507,7 +507,7 @@ export function FinanceSection({ analytics, bookings }: FinanceSectionProps) {
                   .slice(0, 10)
                   .map((b) => (
                     <tr key={b.id}>
-                      <td><code style={{ fontSize: 12 }}>{b.reference}</code></td>
+                      <td><code style={{ fontSize: 12 }}>{b.reference ?? b.id.slice(-8)}</code></td>
                       <td>{b.serviceName}</td>
                       <td>R {(b.price / 100).toFixed(2)}</td>
                       <td><span className={statusPill(b.paymentStatus ?? '')}>{b.paymentStatus ?? '—'}</span></td>
