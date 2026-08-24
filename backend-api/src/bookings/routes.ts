@@ -322,6 +322,29 @@ bookingsRouter.get('/', authRequired, async (req, res, next) => {
   }
 });
 
+bookingsRouter.get('/:bookingId', authRequired, async (req, res, next) => {
+  try {
+    const booking = await prisma.booking.findUnique({
+      where: { id: String(req.params.bookingId) },
+      include: { customer: true }
+    });
+    if (!booking) throw new HttpError(404, 'Booking not found');
+    if (req.auth!.role === 'customer' && booking.customerId !== req.auth!.profileId) {
+      throw new HttpError(403, 'Forbidden');
+    }
+    if (
+      req.auth!.role === 'driver' &&
+      booking.driverId &&
+      booking.driverId !== req.auth!.profileId
+    ) {
+      throw new HttpError(403, 'Forbidden');
+    }
+    res.json(mapBookingDto(booking));
+  } catch (error) {
+    next(error);
+  }
+});
+
 bookingsRouter.patch(
   '/:bookingId/status',
   authRequired,
@@ -334,11 +357,11 @@ bookingsRouter.patch(
       });
       if (!booking) throw new HttpError(404, 'Booking not found');
 
-      if (
-        req.auth!.role === 'customer' &&
-        booking.customerId !== req.auth!.profileId
-      ) {
-        throw new HttpError(403, 'Forbidden');
+      if (req.auth!.role === 'customer') {
+        throw new HttpError(
+          403,
+          'Customers cannot change booking status; use cancel or wait for driver/ops updates'
+        );
       }
       if (
         req.auth!.role === 'driver' &&

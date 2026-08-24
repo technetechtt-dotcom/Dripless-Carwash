@@ -9,6 +9,7 @@ import {
   bookingZoneLabel,
   driverLabel,
   formatBookingRef,
+  formatMoneyZar,
   formatPersonName
 } from '../formatters';
 
@@ -450,7 +451,7 @@ export const BookingsSection = ({
               <div>
                 <div className="muted">Payment</div>
                 <div>
-                  {drawerBooking.paymentMethod} · ${drawerBooking.price.toFixed(2)}
+                  {drawerBooking.paymentMethod} · {formatMoneyZar(drawerBooking.price)}
                   {drawerBooking.appliedSpecialPromoCode ?
                     ` · promo ${drawerBooking.appliedSpecialPromoCode}`
                   : ''}

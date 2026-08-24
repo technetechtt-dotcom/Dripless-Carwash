@@ -55,3 +55,9 @@ backend-api/*.json.bak
 # Misc
 *.tsbuildinfo
 .eslintcache
+
+# Playwright
+test-results/
+e2e-report/
+playwright-report/
+blob-report/

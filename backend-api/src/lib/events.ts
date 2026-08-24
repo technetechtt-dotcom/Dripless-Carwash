@@ -4,10 +4,14 @@ import type { Response } from 'express';
 import { prisma } from '../db/prisma.js';
 import { logger } from './logger.js';
 
+/** Keep in sync with shared-contract/src/events.ts PLATFORM_EVENT_VERSION */
+export const PLATFORM_EVENT_VERSION = 1;
+
 export type PlatformEvent = {
   id: string;
   type: string;
   at: string;
+  version: number;
   payload: Record<string, unknown>;
 };
 
@@ -20,17 +24,24 @@ function mapEvent(row: {
   payload: unknown;
   createdAt: Date;
 }): PlatformEvent {
+  const payload = (row.payload || {}) as Record<string, unknown>;
   return {
     id: row.sequence.toString(),
     type: row.type,
     at: row.createdAt.toISOString(),
-    payload: row.payload as Record<string, unknown>
+    version: typeof payload.version === 'number' ? payload.version : PLATFORM_EVENT_VERSION,
+    payload
   };
 }
 
 export function publishEvent(type: string, payload: Record<string, unknown>) {
+  const enriched = {
+    ...payload,
+    version: PLATFORM_EVENT_VERSION,
+    emittedAt: new Date().toISOString()
+  };
   void prisma.realtimeEvent
-    .create({ data: { type, payload: payload as Prisma.InputJsonValue } })
+    .create({ data: { type, payload: enriched as Prisma.InputJsonValue } })
     .then((row) => bus.emit('event', mapEvent(row)))
     .catch((error) => logger.error('realtime_event_persist_failed', { type, error: String(error) }));
 }

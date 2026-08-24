@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { adminApi, notificationApi, trackingApi } from '@shared/api';
+import { adminApi, notificationApi, subscribePlatformEvents, trackingApi } from '@shared/api';
+import { isBookingLifecycleEvent } from '@shared/events';
 import { useNavigate, useParams } from 'react-router-dom';
 import type {
   AccountStatus,
@@ -288,11 +289,27 @@ export const DashboardPage = ({ tabOverride }: DashboardPageProps) => {
     void loadDashboard();
   }, [loadDashboard]);
 
+  // Realtime primary; interval polling is reconciliation fallback only.
+  useEffect(() => {
+    if (!admin) return;
+    const stop = subscribePlatformEvents((event) => {
+      if (
+        isBookingLifecycleEvent(event.type) ||
+        event.type === 'driver.location' ||
+        event.type === 'ops.incident' ||
+        event.type === 'notification.created'
+      ) {
+        void loadDashboard();
+      }
+    });
+    return stop;
+  }, [admin, loadDashboard]);
+
   useEffect(() => {
     if (!isLiveMode) return;
     const timer = window.setInterval(() => {
       void loadDashboard();
-    }, 15000);
+    }, 60_000);
     return () => window.clearInterval(timer);
   }, [isLiveMode, loadDashboard]);
 

@@ -7,13 +7,10 @@ import React, {
   useState,
   type ReactNode
 } from 'react';
-import { bookingApi, paymentsApi } from '@shared/api';
+import { bookingApi, paymentsApi, subscribePlatformEvents } from '@shared/api';
+import { isBookingLifecycleEvent } from '@shared/events';
 import { getActiveSession } from '@shared/session';
-import {
-  toBackendBookingStatus,
-  toCustomerBookingStatus,
-  type CustomerBookingStatus
-} from '@shared/status';
+import { toCustomerBookingStatus } from '@shared/status';
 import { notify } from '../utils/notify';
 import type { BookingContract } from '@shared/types';
 export interface Booking {
@@ -42,10 +39,12 @@ interface BookingContextType {
   addBooking: (
   booking: Omit<Booking, 'id' | 'status' | 'ecoPoints' | 'createdAt'>)
   => Promise<Booking>;
-  updateBookingStatus: (id: string, status: Booking['status']) => void;
+  /** Refetch a single booking from the backend (server is authoritative). */
+  refreshBooking: (id: string) => Promise<Booking | null>;
   cancelBooking: (id: string, reason?: string) => Promise<Booking>;
   walletBalance: number;
   transactions: Transaction[];
+  realtimeState: 'connected' | 'reconnecting' | 'stopped' | 'idle';
 }
 export interface Transaction {
   id: string;
@@ -67,6 +66,7 @@ export const BookingProvider = ({ children }: {children: ReactNode;}) => {
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [walletBalance, setWalletBalance] = useState(0);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [realtimeState, setRealtimeState] = useState<'connected' | 'reconnecting' | 'stopped' | 'idle'>('idle');
   const session = getActiveSession();
   const customerId = session?.payload.userId ?? '';
   const customerName = session?.payload.email;
@@ -97,29 +97,34 @@ export const BookingProvider = ({ children }: {children: ReactNode;}) => {
     []
   );
 
-  useEffect(() => {
+  const loadBookings = useCallback(async () => {
     if (!customerId) {
       setBookings([]);
       return;
     }
-    let cancelled = false;
-    const loadBookings = async () => {
-      try {
-        const contracts = await bookingApi.listBookingsForCustomer(customerId);
-        if (!cancelled) {
-          setBookings(contracts.map(toUiBooking));
-        }
-      } catch {
-        if (!cancelled) {
-          setBookings([]);
-        }
-      }
-    };
-    void loadBookings();
-    return () => {
-      cancelled = true;
-    };
+    try {
+      const contracts = await bookingApi.listBookingsForCustomer(customerId);
+      setBookings(contracts.map(toUiBooking));
+    } catch {
+      /* keep last good snapshot on transient failures */
+    }
   }, [customerId, toUiBooking]);
+
+  const refreshBooking = useCallback(async (id: string) => {
+    try {
+      const contract = await bookingApi.getBooking(id);
+      if (!contract) return null;
+      const ui = toUiBooking(contract);
+      setBookings((prev) => {
+        const exists = prev.some((b) => b.id === id);
+        if (!exists) return [ui, ...prev];
+        return prev.map((b) => (b.id === id ? ui : b));
+      });
+      return ui;
+    } catch {
+      return null;
+    }
+  }, [toUiBooking]);
 
   const refreshWallet = useCallback(async () => {
     if (!customerId) {
@@ -149,6 +154,37 @@ export const BookingProvider = ({ children }: {children: ReactNode;}) => {
       setTransactions([]);
     }
   }, [customerId]);
+
+  useEffect(() => {
+    void loadBookings();
+  }, [loadBookings]);
+
+  // Realtime primary; polling is reconciliation fallback only.
+  useEffect(() => {
+    if (!customerId) return;
+    const stop = subscribePlatformEvents(
+      (event) => {
+        if (!isBookingLifecycleEvent(event.type) && event.type !== 'booking.message') return;
+        const bookingId = String(event.payload.bookingId || '');
+        if (bookingId) {
+          void refreshBooking(bookingId);
+        } else {
+          void loadBookings();
+        }
+        if (event.type === 'booking.payment' || event.type === 'payment.status') {
+          void refreshWallet();
+        }
+      },
+      setRealtimeState
+    );
+    const poll = window.setInterval(() => {
+      void loadBookings();
+    }, 60_000);
+    return () => {
+      stop();
+      window.clearInterval(poll);
+    };
+  }, [customerId, loadBookings, refreshBooking, refreshWallet]);
 
   useEffect(() => {
     void refreshWallet();
@@ -189,26 +225,6 @@ export const BookingProvider = ({ children }: {children: ReactNode;}) => {
     );
     return newBooking;
   }, [customerId, customerName, toUiBooking]);
-  const updateBookingStatus = (id: string, status: Booking['status']) => {
-    void bookingApi.updateBookingStatus(
-      id,
-      toBackendBookingStatus(status as CustomerBookingStatus),
-      'customer'
-    );
-    setBookings((prev) =>
-    prev.map((b) =>
-    b.id === id ?
-    {
-      ...b,
-      status
-    } :
-    b
-    )
-    );
-    if (status === 'completed') {
-      notify.success('Service completed! EcoPoints earned.');
-    }
-  };
   const cancelBooking = async (id: string, reason?: string) => {
     const cancelled = toUiBooking(await bookingApi.cancelBooking(id, reason));
     setBookings((prev) => prev.map((booking) => booking.id === id ? cancelled : booking));
@@ -223,10 +239,11 @@ export const BookingProvider = ({ children }: {children: ReactNode;}) => {
         activeBookings,
         completedBookings,
         addBooking,
-        updateBookingStatus,
+        refreshBooking,
         cancelBooking,
         walletBalance,
-        transactions
+        transactions,
+        realtimeState
       }}>
 
       {children}

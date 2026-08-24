@@ -8,6 +8,7 @@ import { GlassButton } from './ui/GlassButton';
 import { ChatDrawer } from './ChatDrawer';
 import { useDriverBookings } from '../contexts/DriverBookingContext';
 import { buildNavigationUrl } from '@shared/maps';
+import { formatZar } from '@shared/currency';
 interface ActiveJobCardProps {
   job: Job;
   onStatusUpdate: (newStatus: JobStatus) => void;
@@ -81,7 +82,7 @@ export function ActiveJobCard({ job, onStatusUpdate }: ActiveJobCardProps) {
           </div>
           <div className="bg-emerald-50 dark:bg-emerald-900/30 border border-emerald-200/50 dark:border-emerald-700/50 px-3 py-1 rounded-full">
             <span className="text-emerald-600 dark:text-emerald-400 font-bold">
-              ${job.earnings.toFixed(2)}
+              {formatZar(job.earnings)}
             </span>
           </div>
         </div>

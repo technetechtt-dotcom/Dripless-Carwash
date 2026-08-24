@@ -1,4 +1,17 @@
-const base = 'http://localhost:4000';
+/**
+ * API smoke against the current Ozow-first payment architecture.
+ *
+ * Usage:
+ *   node tools/smoke-api.mjs
+ *   SMOKE_BASE_URL=http://localhost:4000 node tools/smoke-api.mjs
+ *
+ * Flow: customer book → payment intent (ozow|stub) → pay webhook → ops assign →
+ * driver status ladder → ops dashboard summary.
+ *
+ * When Ozow credentials are not configured, falls back to stub webhook so CI/local
+ * smoke still exercises the booking + dispatch path.
+ */
+const base = process.env.SMOKE_BASE_URL || 'http://localhost:4000';
 
 const request = async (path, method = 'GET', body, token) => {
   const response = await fetch(`${base}${path}`, {
@@ -11,91 +24,182 @@ const request = async (path, method = 'GET', body, token) => {
   });
 
   const raw = await response.text();
-  const payload = raw ? JSON.parse(raw) : null;
+  let payload = null;
+  try {
+    payload = raw ? JSON.parse(raw) : null;
+  } catch {
+    payload = raw;
+  }
   if (!response.ok) {
-    throw new Error(`${path} failed (${response.status}): ${raw}`);
+    throw new Error(`${method} ${path} failed (${response.status}): ${raw}`);
   }
   return payload;
 };
 
+const loginOrSignup = async (role, email, password, signupBody) => {
+  try {
+    return await request(`/auth/${role}/login`, 'POST', { email, password });
+  } catch {
+    if (!signupBody) throw new Error(`Login failed for ${email}`);
+    return request(`/auth/${role}/signup`, 'POST', signupBody);
+  }
+};
+
 const run = async () => {
-  const customer = await request('/auth/customer/login', 'POST', {
-    email: 'customer.smoke@test.com',
-    password: 'secret123'
-  });
-  const driver = await request('/auth/driver/login', 'POST', {
-    email: 'driver.smoke@test.com',
-    password: 'secret123'
-  });
+  const suffix = `${Date.now().toString(36)}`;
+  const customerEmail = process.env.SMOKE_CUSTOMER_EMAIL || `customer.smoke.${suffix}@test.com`;
+  const driverEmail = process.env.SMOKE_DRIVER_EMAIL || `driver.smoke.${suffix}@test.com`;
+  const adminEmail = process.env.SMOKE_OPS_EMAIL || 'admin@driplesswash.com';
+  const adminPassword = process.env.SMOKE_OPS_PASSWORD || 'admin1234';
+
+  const customer = await loginOrSignup(
+    'customer',
+    customerEmail,
+    'secret123',
+    {
+      name: 'Smoke Customer',
+      email: customerEmail,
+      password: 'secret123'
+    }
+  );
+
+  let driver;
+  try {
+    driver = await request('/auth/driver/login', 'POST', {
+      email: driverEmail,
+      password: 'secret123'
+    });
+  } catch {
+    // Prefer seeded driver when present
+    driver = await request('/auth/driver/login', 'POST', {
+      email: 'driver.smoke@test.com',
+      password: 'secret123'
+    }).catch(() => null);
+    if (!driver) {
+      throw new Error('Driver login failed — seed a verified driver or set SMOKE_DRIVER_EMAIL');
+    }
+  }
+
   const admin = await request('/auth/ops-admin/login', 'POST', {
-    email: 'admin@driplesswash.com',
-    password: 'admin1234'
+    email: adminEmail,
+    password: adminPassword
   });
+
+  const customerToken = customer.session.tokens.accessToken;
+  const driverToken = driver.session.tokens.accessToken;
+  const opsToken = admin.session.tokens.accessToken;
+
+  const noon = new Date();
+  noon.setHours(12, 0, 0, 0);
 
   const booking = await request(
     '/bookings',
     'POST',
     {
-      customerId: customer.profile.id,
-      customerName: customer.profile.name,
-      serviceName: 'Car Wash',
-      optionName: 'Premium',
-      pickupLocation: 'Smoke Test Address',
-      paymentMethod: 'Visa',
-      price: 42,
-      scheduledDate: '2026-08-10',
-      scheduledTime: '10:00'
+      serviceSlug: 'car-wash',
+      optionSlug: 'basic',
+      pickupLocation: 'Sandton City Mall',
+      pickupCoordinates: { lat: -26.1076, lng: 28.0567 },
+      scheduledAt: noon.toISOString(),
+      vehicleSize: 'SEDAN'
     },
-    customer.session.tokens.accessToken
+    customerToken
   );
 
-  const incomingJob = await request(
-    '/driver/jobs/incoming',
-    'POST',
-    {
-      driverId: driver.profile.id
-    },
-    driver.session.tokens.accessToken
-  );
+  const preferOzow = process.env.SMOKE_PROVIDER !== 'stub';
+  let paymentId;
+  let paymentProvider = 'stub';
 
-  await request(
-    `/bookings/${incomingJob.id}/status`,
+  const intentBody = {
+    bookingId: booking.id,
+    idempotencyKey: `smoke_${booking.id}`,
+    ...(preferOzow ? { provider: 'ozow' } : { provider: 'stub' })
+  };
+
+  try {
+    const intent = await request('/payments/intent', 'POST', intentBody, customerToken);
+    paymentId = intent.paymentId || intent.id;
+    paymentProvider = intent.provider || intentBody.provider;
+  } catch (error) {
+    if (!preferOzow) throw error;
+    // Ozow not configured → stub fallback
+    const intent = await request(
+      '/payments/intent',
+      'POST',
+      { bookingId: booking.id, provider: 'stub', idempotencyKey: `smoke_stub_${booking.id}` },
+      customerToken
+    );
+    paymentId = intent.paymentId || intent.id;
+    paymentProvider = 'stub';
+  }
+
+  if (paymentProvider === 'ozow') {
+    // Simulate Ozow notify (sandbox/dev) — requires OZOW_PRIVATE_KEY on server;
+    // when signature verification fails, fall back to stub for local smoke.
+    try {
+      await request('/payments/webhooks/ozow', 'POST', {
+        SiteCode: process.env.OZOW_SITE_CODE || 'SMOKE',
+        TransactionId: `ozow_txn_${suffix}`,
+        TransactionReference: paymentId,
+        Amount: String(Number(booking.price).toFixed(2)),
+        Status: 'Complete',
+        CurrencyCode: 'ZAR',
+        IsTest: 'true',
+        Hash: process.env.SMOKE_OZOW_HASH || 'skip'
+      });
+    } catch {
+      const stubIntent = await request(
+        '/payments/intent',
+        'POST',
+        {
+          bookingId: booking.id,
+          provider: 'stub',
+          idempotencyKey: `smoke_stub_fallback_${booking.id}`
+        },
+        customerToken
+      );
+      paymentId = stubIntent.paymentId || stubIntent.id;
+      paymentProvider = 'stub';
+      await request('/payments/webhooks/stub', 'POST', { paymentId });
+    }
+  } else {
+    await request('/payments/webhooks/stub', 'POST', { paymentId });
+  }
+
+  const assign = await request(
+    `/ops/bookings/${booking.id}/assign-driver`,
     'PATCH',
-    {
-      status: 'EN_ROUTE'
-    },
-    driver.session.tokens.accessToken
+    { driverId: driver.profile.id, reason: 'Smoke assign' },
+    opsToken
   );
 
-  await request(
-    `/bookings/${booking.id}/status`,
-    'PATCH',
-    {
-      status: 'IN_PROGRESS',
-      metadata: {
-        reason: 'Smoke test admin override'
-      }
-    },
-    admin.session.tokens.accessToken
-  );
+  for (const status of ['EN_ROUTE', 'ARRIVED', 'IN_PROGRESS']) {
+    await request(
+      `/bookings/${booking.id}/status`,
+      'PATCH',
+      { status },
+      driverToken
+    );
+  }
 
-  const summary = await request(
-    '/ops/dashboard/summary',
-    'GET',
-    undefined,
-    admin.session.tokens.accessToken
-  );
+  const authoritative = await request(`/bookings/${booking.id}`, 'GET', undefined, customerToken);
+  const summary = await request('/ops/dashboard/summary', 'GET', undefined, opsToken);
 
   console.log(
     JSON.stringify(
       {
         ok: true,
+        architecture: 'ozow-first',
+        paymentProvider,
         customerId: customer.profile.id,
         driverId: driver.profile.id,
         adminId: admin.profile.id,
         bookingId: booking.id,
-        incomingJobId: incomingJob.id,
-        summary
+        assignedDriverId: assign.driverId,
+        bookingStatus: authoritative.status,
+        paymentStatus: authoritative.paymentStatus,
+        driverEarningsZar: authoritative.driverEarningsZar,
+        summaryKeys: summary && typeof summary === 'object' ? Object.keys(summary) : []
       },
       null,
       2

@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import type { AccountStatus, BookingContract, CustomerProfile } from '@shared/types';
-import { formatPersonName, formatPhoneMasked, formatShortId } from '../formatters';
+import { formatPersonName, formatPhoneMasked, formatShortId, formatMoneyZar } from '../formatters';
 
 type CustomersSectionProps = {
   customerQuery: string;
@@ -139,7 +139,7 @@ export const CustomersSection = ({
                       <div className="muted">{formatPhoneMasked(customer.phone)}</div>
                     </td>
                     <td>
-                      ${customer.walletBalance.toFixed(2)}
+                      {formatMoneyZar(customer.walletBalance)}
                       <div className="muted">{customer.ecoPoints} eco</div>
                     </td>
                     <td>
@@ -147,7 +147,7 @@ export const CustomersSection = ({
                         {stats?.completed ?? 0} done · {stats?.cancelled ?? 0} cancelled ·{' '}
                         {stats?.open ?? 0} open
                       </div>
-                      <div className="muted">LTV ~${(stats?.spend ?? 0).toFixed(0)}</div>
+                      <div className="muted">LTV ~{formatMoneyZar(stats?.spend ?? 0)}</div>
                     </td>
                     <td>
                       <span
@@ -225,7 +225,7 @@ export const CustomersSection = ({
           </div>
           <div className="row">
             <span className="pill">{selected.status}</span>
-            <span className="pill">Wallet ${selected.walletBalance.toFixed(2)}</span>
+            <span className="pill">Wallet {formatMoneyZar(selected.walletBalance)}</span>
             <span className="pill">{selected.ecoPoints} eco points</span>
           </div>
           <div>
@@ -235,7 +235,7 @@ export const CustomersSection = ({
           </div>
           <div className="muted">
             Lifetime completed {selectedStats?.completed ?? 0} · cancelled{' '}
-            {selectedStats?.cancelled ?? 0} · spend ~${(selectedStats?.spend ?? 0).toFixed(2)}
+            {selectedStats?.cancelled ?? 0} · spend ~{formatMoneyZar(selectedStats?.spend ?? 0)}
           </div>
           <p className="muted">
             Marketing consent, POPIA requests and internal notes can be attached when backend

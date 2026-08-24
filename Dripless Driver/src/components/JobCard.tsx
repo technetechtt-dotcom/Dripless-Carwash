@@ -1,5 +1,6 @@
 import React from 'react';
-import { Calendar, MapPin, Star } from 'lucide-react';
+import { Calendar, Star } from 'lucide-react';
+import { formatZar } from '@shared/currency';
 import { Job } from '../types';
 import { GlassCard } from './ui/GlassCard';
 interface JobCardProps {
@@ -71,7 +72,7 @@ export function JobCard({ job }: JobCardProps) {
       <div className="flex items-center justify-between pt-3 border-t border-slate-100 dark:border-slate-700/50">
         <div className="flex items-center space-x-1">
           <span className="text-lg font-bold text-slate-900 dark:text-white">
-            ${job.earnings.toFixed(2)}
+            {formatZar(job.earnings)}
           </span>
         </div>
 

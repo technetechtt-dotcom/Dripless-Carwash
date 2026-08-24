@@ -16,6 +16,8 @@ import {
   subscribePlatformEvents,
   trackingApi
 } from '@shared/api';
+import { formatZar } from '@shared/currency';
+import { isBookingLifecycleEvent } from '@shared/events';
 import { interpolateGeoPoint, textToGeoPoint } from '@shared/maps';
 import { Booking, Job, JobStatus, PerformanceStats, Message } from '../types';
 import { normaliseGpsSample } from '../utils/gps';
@@ -82,7 +84,7 @@ export const DriverBookingProvider: React.FC<{
     destinationCoordinates: contract.destinationCoordinates ?? null,
     pooledWithBookingId: contract.pooledWithBookingId ?? null,
     dispatchReason: contract.latestAudit?.reason ?? null,
-    earnings: Number((contract.price * 0.85).toFixed(2)),
+    earnings: typeof contract.driverEarningsZar === 'number' ? contract.driverEarningsZar : 0,
     distance: contract.distance || '2.4 km',
     duration: contract.duration || '12 min',
     timestamp: contract.createdAt
@@ -317,45 +319,59 @@ export const DriverBookingProvider: React.FC<{
     setIncomingJob(null);
     showToast('Job declined', 'info');
   };
+  const refreshEarnings = useCallback(async () => {
+    if (!apiRuntimeConfig.isRemoteEnabled()) return;
+    try {
+      const summary = await driverOperationsApi.payoutSummary();
+      const available = Number(summary.availableZar ?? 0);
+      setEarnings(Number.isFinite(available) ? available : 0);
+    } catch {
+      /* keep last known earnings */
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!driver?.id) return;
+    void refreshEarnings();
+  }, [driver?.id, refreshEarnings]);
+
   const updateJobStatus = async (newStatus: JobStatus) => {
-    if (activeJob) {
-      await bookingApi.updateBookingStatus(activeJob.id, newStatus, 'driver');
-      if (newStatus === 'COMPLETED') {
-        const completedBooking: Booking = {
-          ...activeJob,
-          service:
-          activeJob.type === 'RIDE' ?
-          'Dripless Ride' :
-          activeJob.type === 'WASH' ?
-          'Dripless Wash' :
-          activeJob.type === 'HOME_SERVICE' ?
-          'Dripless Home Service' :
-          'Dripless Parcel',
-          userName: 'user_123',
-          price: activeJob.earnings * 1.2,
-          ecoPoints: 50,
-          createdAt: activeJob.timestamp,
-          status: 'COMPLETED'
-        };
-        setCompletedBookings((prev) => [completedBooking, ...prev]);
-        setEarnings((prev) => prev + activeJob.earnings);
-        setJobToRate(activeJob);
-        setActiveJob(null);
-        if (driver) {
-          void notificationApi.createNotification({
-            role: 'driver',
-            userId: driver.id,
-            title: 'Job completed',
-            message: `You earned $${activeJob.earnings.toFixed(2)}.`,
-            type: 'success'
-          });
-        }
-      } else {
-        setActiveJob({
-          ...activeJob,
-          status: newStatus
+    if (!activeJob) return;
+    const updated = await bookingApi.updateBookingStatus(activeJob.id, newStatus, 'driver');
+    if (!updated) {
+      showToast('Could not update job status', 'error');
+      return;
+    }
+    if (newStatus === 'COMPLETED') {
+      const authoritative =
+        (await bookingApi.getBooking(activeJob.id).catch(() => null)) ?? updated;
+      const completedBooking: Booking = {
+        ...mapContractToJob(authoritative),
+        service: authoritative.serviceName,
+        userName: (authoritative.customerName || 'customer').toLowerCase().replace(/\s+/g, '_'),
+        price: authoritative.price,
+        ecoPoints: authoritative.ecoPoints,
+        createdAt: authoritative.createdAt
+      };
+      setCompletedBookings((prev) => [completedBooking, ...prev]);
+      await refreshEarnings();
+      setJobToRate(mapContractToJob(authoritative));
+      setActiveJob(null);
+      if (driver) {
+        const net =
+          typeof authoritative.driverEarningsZar === 'number'
+            ? authoritative.driverEarningsZar
+            : 0;
+        void notificationApi.createNotification({
+          role: 'driver',
+          userId: driver.id,
+          title: 'Job completed',
+          message: `You earned ${formatZar(net)}.`,
+          type: 'success'
         });
       }
+    } else {
+      setActiveJob(mapContractToJob(updated));
     }
   };
   const submitRating = (rating: number, feedback?: string) => {
@@ -381,7 +397,7 @@ export const DriverBookingProvider: React.FC<{
           'Dripless Home Service' :
           'Dripless Parcel',
         userName: incomingJob.customerName.toLowerCase().replace(/\s+/g, '_'),
-        price: Number((incomingJob.earnings / 0.85).toFixed(2)),
+        price: incomingJob.earnings,
         ecoPoints: Math.max(10, Math.round(incomingJob.earnings * 4)),
         createdAt: incomingJob.timestamp
       });
@@ -424,13 +440,26 @@ export const DriverBookingProvider: React.FC<{
         });
       }
       if (activeJob && bookingId === activeJob.id && event.type === 'booking.status') {
-        setActiveJob((current) => current ? { ...current, status: String(event.payload.status) as JobStatus } : null);
+        void bookingApi.getBooking(bookingId).then((booking) => {
+          if (!booking) return;
+          if (booking.status === 'COMPLETED' || booking.status === 'CANCELLED') {
+            setActiveJob(null);
+            if (booking.status === 'COMPLETED') {
+              void refreshEarnings();
+            }
+            return;
+          }
+          setActiveJob(mapContractToJob(booking));
+        });
       }
       if (activeJob && bookingId === activeJob.id && event.type === 'booking.message') {
         void loadMessages(activeJob.id);
       }
+      if (isBookingLifecycleEvent(event.type) && event.type === 'booking.status') {
+        void refreshEarnings();
+      }
     });
-  }, [activeJob?.id, driver?.id, loadMessages]);
+  }, [activeJob?.id, driver?.id, loadMessages, refreshEarnings]);
   return (
     <DriverBookingContext.Provider
       value={{
@@ -460,3 +489,4 @@ export const DriverBookingProvider: React.FC<{
     </DriverBookingContext.Provider>);
 
 };
+

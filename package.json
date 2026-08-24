@@ -10,11 +10,17 @@
     "build:all": "npm --prefix \"Dripless Customer\" run build && npm --prefix \"Dripless Driver\" run build && npm --prefix \"Dripless Ops Admin\" run build && npm --prefix \"backend-api\" run check",
     "health": "node \"tools/health-check.mjs\"",
     "smoke:api": "node \"tools/smoke-api.mjs\"",
+    "test:e2e": "npx playwright test",
+    "test:e2e:ui": "npx playwright test --ui",
+    "test:golden": "npm --prefix \"backend-api\" test -- src/cross-platform-golden-path.test.ts src/gps-realtime-propagation.test.ts",
     "mobile:preflight": "node \"tools/mobile-preflight.mjs\"",
     "mobile:build": "npm --prefix \"Dripless Customer\" run build && npm --prefix \"Dripless Driver\" run build",
     "mobile:sync": "npm --prefix \"Dripless Customer\" run mobile:sync && npm --prefix \"Dripless Driver\" run mobile:sync",
     "mobile:ready": "npm run mobile:build && npm run mobile:sync && npm run mobile:preflight && node \"tools/mobile-ready-summary.mjs\"",
     "check:navigation": "node \"tools/navigation-integrity-check.mjs\"",
     "check:platform": "npm run check:navigation && npm --prefix \"Dripless Customer\" run lint && npm --prefix \"Dripless Driver\" run lint && npm --prefix \"Dripless Ops Admin\" run lint && npm --prefix \"Dripless Customer\" run typecheck && npm --prefix \"Dripless Driver\" run typecheck && npm --prefix \"Dripless Ops Admin\" run typecheck"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.55.0"
   }
 }

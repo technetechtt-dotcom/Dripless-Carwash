@@ -113,6 +113,8 @@ export interface BookingContract {
   paymentStatus?: string;
   price: number;
   basePrice?: number;
+  /** Estimated/authoritative driver net in ZAR (backend-computed) */
+  driverEarningsZar?: number;
   specialDiscountAmount?: number;
   appliedSpecialPromoCode?: string | null;
   ecoPoints: number;

@@ -56,6 +56,8 @@ export function mapBookingDto(booking: {
     basePrice: fromCents(booking.basePrice ?? booking.price),
     discountAmount: fromCents(booking.discountAmount ?? 0),
     specialDiscountAmount: fromCents(booking.discountAmount ?? 0),
+    /** Estimated driver net (85% after platform fee) — authoritative earning created on COMPLETED */
+    driverEarningsZar: fromCents(booking.price - Math.round(booking.price * 0.15)),
     promoCode: booking.promoCode ?? null,
     appliedSpecialPromoCode: booking.promoCode ?? null,
     ecoPoints: booking.ecoPoints ?? 0,

@@ -26,12 +26,9 @@ export function textToGeoPoint(
 ): GeoPoint {
   const safeLabel = label.trim().toLowerCase() || 'unknown location';
   const hash = hashString(`${safeLabel}:${seed}`);
-
-  // Keep generated coordinates in roughly a 20km radius around the origin.
   const latOffset = ((hash % 2000) / 100000) * (hash % 2 === 0 ? 1 : -1);
   const lngOffset =
     (((Math.floor(hash / 2000) % 2000) / 100000) * (hash % 3 === 0 ? -1 : 1));
-
   return {
     lat: clamp(origin.lat + latOffset, -89.9, 89.9),
     lng: clamp(origin.lng + lngOffset, -179.9, 179.9)
@@ -59,21 +56,15 @@ export function estimateDistanceKm(from: GeoPoint, to: GeoPoint) {
   const deltaLng = toRadians(to.lng - from.lng);
   const fromLat = toRadians(from.lat);
   const toLat = toRadians(to.lat);
-
   const haversine =
     Math.sin(deltaLat / 2) * Math.sin(deltaLat / 2) +
-    Math.cos(fromLat) *
-      Math.cos(toLat) *
-      Math.sin(deltaLng / 2) *
-      Math.sin(deltaLng / 2);
+    Math.cos(fromLat) * Math.cos(toLat) * Math.sin(deltaLng / 2) * Math.sin(deltaLng / 2);
   const arc = 2 * Math.atan2(Math.sqrt(haversine), Math.sqrt(1 - haversine));
   return EARTH_RADIUS_KM * arc;
 }
 
 export function estimateEtaMinutes(distanceKm: number, speedKmPerHour = 32) {
-  if (distanceKm <= 0) {
-    return 1;
-  }
+  if (distanceKm <= 0) return 1;
   const hours = distanceKm / Math.max(speedKmPerHour, 5);
   return Math.max(1, Math.round(hours * 60));
 }

@@ -30,7 +30,7 @@ import { authRequired } from './middleware/auth.js';
 import { redisHealth } from './lib/redis.js';
 import { jobStats } from './lib/queue.js';
 import { logger } from './lib/logger.js';
-import { subscribeSse } from './lib/events.js';
+import { PLATFORM_EVENT_VERSION, subscribeSse } from './lib/events.js';
 import { geoRouter } from './geo/routes.js';
 import { invoicesRouter } from './invoices/routes.js';
 import { attachMonitoringErrorHandler, initializeMonitoring } from './lib/monitoring.js';
@@ -132,9 +132,38 @@ export function createApp() {
     });
   });
 
-  app.get('/events/stream', authRequired, (req, res) => {
+  const streamEvents = (req: express.Request, res: express.Response) => {
     subscribeSse(res, String(req.headers['last-event-id'] || req.query.lastEventId || ''));
-  });
+  };
+  app.get('/events/stream', authRequired, streamEvents);
+  app.get('/events/sse', authRequired, streamEvents);
+
+  const replayEvents = async (req: express.Request, res: express.Response, next: express.NextFunction) => {
+    try {
+      const after = String(req.query.after || '0');
+      const cursor = /^\d+$/.test(after) ? BigInt(after) : 0n;
+      const rows = await prisma.realtimeEvent.findMany({
+        where: { sequence: { gt: cursor } },
+        orderBy: { sequence: 'asc' },
+        take: 200
+      });
+      const nextCursor = rows.length ? rows[rows.length - 1].sequence.toString() : after;
+      res.json({
+        events: rows.map((row) => ({
+          id: row.sequence.toString(),
+          type: row.type,
+          at: row.createdAt.toISOString(),
+          version: PLATFORM_EVENT_VERSION,
+          payload: row.payload
+        })),
+        nextCursor
+      });
+    } catch (error) {
+      next(error);
+    }
+  };
+  app.get('/events/since', authRequired, replayEvents);
+  app.get('/events/replay', authRequired, replayEvents);
 
   app.use('/auth', authRouter);
   app.use('/auth/mfa', mfaRouter);

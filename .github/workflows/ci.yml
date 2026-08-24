@@ -150,16 +150,16 @@ jobs:
 
       - name: Run npm audit (backend)
         working-directory: backend-api
-        run: npm audit --audit-level=high --omit=dev || true
+        run: npm audit --audit-level=high --omit=dev
 
       - name: Run npm audit (customer)
         working-directory: Dripless Customer
-        run: npm audit --audit-level=high --omit=dev || true
+        run: npm audit --audit-level=high --omit=dev
 
       - name: Run npm audit (driver)
         working-directory: Dripless Driver
-        run: npm audit --audit-level=high --omit=dev || true
+        run: npm audit --audit-level=high --omit=dev
 
       - name: Run npm audit (ops)
         working-directory: Dripless Ops Admin
-        run: npm audit --audit-level=high --omit=dev || true
+        run: npm audit --audit-level=high --omit=dev

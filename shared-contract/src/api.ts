@@ -1318,6 +1318,17 @@ export const bookingApi = {
     return state.bookings.filter((booking) => booking.customerId === customerId);
   },
 
+  async getBooking(bookingId: string): Promise<BookingContract | null> {
+    if (hasRemoteApi()) {
+      return requestApi<BookingContract>(`/bookings/${encodeURIComponent(bookingId)}`, {
+        token: getBearerToken()
+      });
+    }
+    await delay(50);
+    const state = loadState();
+    return state.bookings.find((booking) => booking.id === bookingId) ?? null;
+  },
+
   async cancellationPolicy(bookingId: string) {
     if (hasRemoteApi()) {
       return requestApi<{ refundable: boolean; feeCents: number; summary: string }>(
@@ -2859,7 +2870,13 @@ export const financeApi = {
 };
 
 export function subscribePlatformEvents(
-  onEvent: (event: { id: string; type: string; at: string; payload: Record<string, unknown> }) => void,
+  onEvent: (event: {
+    id: string;
+    type: string;
+    at: string;
+    version?: number;
+    payload: Record<string, unknown>;
+  }) => void,
   onState?: (state: 'connected' | 'reconnecting' | 'stopped') => void
 ) {
   const controller = new AbortController();
@@ -2897,7 +2914,18 @@ export function subscribePlatformEvents(
             const id = frame.match(/^id:\s*(.+)$/m)?.[1]?.trim();
             const data = frame.match(/^data:\s*(.+)$/m)?.[1];
             if (id && data) {
-              const event = JSON.parse(data) as { id: string; type: string; at: string; payload: Record<string, unknown> };
+              const event = JSON.parse(data) as {
+                id: string;
+                type: string;
+                at: string;
+                version?: number;
+                payload: Record<string, unknown>;
+              };
+              // Drop out-of-order / duplicate frames after reconnect
+              if (/^\d+$/.test(id) && /^\d+$/.test(lastEventId) && BigInt(id) <= BigInt(lastEventId)) {
+                boundary = buffer.indexOf('\n\n');
+                continue;
+              }
               lastEventId = id;
               sessionStorage.setItem('dripless_last_event_id', id);
               onEvent(event);

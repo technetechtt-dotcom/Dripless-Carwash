@@ -132,8 +132,8 @@ describe('pilot critical path: book → pay → dispatch → wash → earning', 
   });
 
   it('runs the closed-pilot critical milestone end-to-end', async () => {
-    // Inside Sandton polygon during operating hours
     const noon = new Date();
+    noon.setDate(noon.getDate() + 1);
     noon.setHours(12, 0, 0, 0);
 
     const bookingRes = await request(app)

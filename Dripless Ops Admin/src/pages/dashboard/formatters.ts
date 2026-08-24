@@ -4,6 +4,7 @@ import type {
   DriverProfile,
   OpsActivityItem
 } from '@shared/types';
+import { formatZar } from '@shared/currency';
 
 /** Short, operator-friendly booking reference. */
 export const formatBookingRef = (booking: Pick<BookingContract, 'id' | 'createdAt'>) => {
@@ -11,6 +12,9 @@ export const formatBookingRef = (booking: Pick<BookingContract, 'id' | 'createdA
   const tail = booking.id.replace(/[^a-zA-Z0-9]/g, '').slice(-4).toUpperCase() || '0000';
   return date ? `DRP-${date}-${tail}` : `DRP-${tail}`;
 };
+
+export const formatMoneyZar = formatZar;
+export { formatZar as formatMoney };
 
 export const formatShortId = (id: string, prefix = '') => {
   const tail = id.replace(/[^a-zA-Z0-9]/g, '').slice(-6).toUpperCase();

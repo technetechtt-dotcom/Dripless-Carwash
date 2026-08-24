@@ -3,6 +3,7 @@ import { prisma } from '../db/prisma.js';
 import { env } from '../config/env.js';
 import { sendOperationalAlert } from '../lib/monitoring.js';
 import { roadRoute } from '../geo/zones.js';
+import { publishEvent } from '../lib/events.js';
 
 export const MAX_AUTO_DISPATCH_ATTEMPTS = 3;
 
@@ -148,13 +149,21 @@ export async function autoAssignDriver(
     });
     return { booking: updated, driverId: best.driverId, reason };
   };
-  return tx
-    ? assign(tx)
-    : prisma.$transaction(assign, {
+  const result = tx
+    ? await assign(tx)
+    : await prisma.$transaction(assign, {
         isolationLevel: 'Serializable',
         maxWait: 10_000,
         timeout: 30_000
       });
+  if (result) {
+    publishEvent('booking.assigned', {
+      bookingId: result.booking.id,
+      driverId: result.driverId,
+      status: result.booking.status
+    });
+  }
+  return result;
 }
 
 export async function createOrRefreshDispatchIncident(

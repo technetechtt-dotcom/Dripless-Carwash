@@ -134,7 +134,7 @@ export function JobRequestModal({
                   id="job-request-title"
                   className="text-3xl font-bold text-slate-900 dark:text-white mt-2">
 
-                    ${job.earnings.toFixed(2)}
+                    {new Intl.NumberFormat('en-ZA', { style: 'currency', currency: 'ZAR' }).format(job.earnings)}
                   </h2>
                   <p className="text-slate-500 dark:text-slate-400 text-sm">
                     Estimated earnings

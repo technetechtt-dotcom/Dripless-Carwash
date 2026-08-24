@@ -9,6 +9,7 @@ import { mapBookingDto, mapCustomerProfile, mapDriverProfile } from '../dto/mapp
 import { createSignedDownload, readLocalObject } from '../evidence/storage.js';
 import { notifyUser } from '../notifications/service.js';
 import { verifyPassword } from '../auth/password.js';
+import { publishEvent } from '../lib/events.js';
 
 export const opsRouter = Router();
 
@@ -648,7 +649,18 @@ opsRouter.patch(
           }
         });
         return tx.booking.findUniqueOrThrow({ where: { id: booking.id }, include: { customer: true } });
+      }, { maxWait: 10_000, timeout: 20_000 });
+      publishEvent('booking.assigned', {
+        bookingId: updated.id,
+        driverId: driver.id,
+        status: updated.status
       });
+      if (updated.status !== booking.status) {
+        publishEvent('booking.status', {
+          bookingId: updated.id,
+          status: updated.status
+        });
+      }
       res.json(mapBookingDto(updated));
     } catch (error) {
       next(error);

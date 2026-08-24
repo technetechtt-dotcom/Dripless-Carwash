@@ -108,7 +108,7 @@ export function HomePage() {
               <DollarSign size={16} />
             </div>
             <span className="text-lg font-bold text-slate-900 dark:text-white">
-              ${earnings.toFixed(0)}
+              {new Intl.NumberFormat('en-ZA', { style: 'currency', currency: 'ZAR', maximumFractionDigits: 0 }).format(earnings)}
             </span>
             <span className="text-[10px] text-slate-500 dark:text-slate-400 uppercase tracking-wide">
               Today
@@ -164,7 +164,7 @@ export function HomePage() {
                     <span className="text-[11px] font-bold text-emerald-700 dark:text-emerald-300">
                       {special.discountType === 'PERCENT' ?
                         `${special.discountValue}% off` :
-                        `$${special.discountValue.toFixed(2)} off`}
+                        `${new Intl.NumberFormat('en-ZA', { style: 'currency', currency: 'ZAR' }).format(special.discountValue)} off`}
                     </span>
                   </div>
                   <p className="text-[11px] text-slate-600 dark:text-slate-300 mt-1">
