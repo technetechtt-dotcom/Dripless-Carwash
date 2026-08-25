@@ -289,21 +289,62 @@ export const DashboardPage = ({ tabOverride }: DashboardPageProps) => {
     void loadDashboard();
   }, [loadDashboard]);
 
-  // Realtime primary; interval polling is reconciliation fallback only.
+  // Realtime primary; debounce coalesces high-frequency driver.location into one refresh.
   useEffect(() => {
     if (!admin) return;
+    let debounceTimer: number | undefined;
+    let pendingFull = false;
+    let pendingLocationsOnly = false;
+
+    const flush = () => {
+      debounceTimer = undefined;
+      if (pendingFull) {
+        pendingFull = false;
+        pendingLocationsOnly = false;
+        void loadDashboard();
+        return;
+      }
+      if (pendingLocationsOnly) {
+        pendingLocationsOnly = false;
+        if (!canViewDrivers) return;
+        void trackingApi
+          .listDriverLocations()
+          .then((rows) => {
+            setDriverLocations(rows);
+            setLastSyncedAt(new Date().toISOString());
+          })
+          .catch(() => {
+            /* keep last known locations on transient SSE-driven refresh failure */
+          });
+      }
+    };
+
+    const schedule = (full: boolean) => {
+      if (full) pendingFull = true;
+      else pendingLocationsOnly = true;
+      if (debounceTimer != null) window.clearTimeout(debounceTimer);
+      // GPS ticks coalesce; booking/ops events flush sooner.
+      debounceTimer = window.setTimeout(flush, full ? 800 : 1800);
+    };
+
     const stop = subscribePlatformEvents((event) => {
       if (
         isBookingLifecycleEvent(event.type) ||
-        event.type === 'driver.location' ||
         event.type === 'ops.incident' ||
         event.type === 'notification.created'
       ) {
-        void loadDashboard();
+        schedule(true);
+        return;
+      }
+      if (event.type === 'driver.location') {
+        schedule(false);
       }
     });
-    return stop;
-  }, [admin, loadDashboard]);
+    return () => {
+      stop();
+      if (debounceTimer != null) window.clearTimeout(debounceTimer);
+    };
+  }, [admin, canViewDrivers, loadDashboard]);
 
   useEffect(() => {
     if (!isLiveMode) return;

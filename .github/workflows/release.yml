@@ -81,7 +81,10 @@ jobs:
         env:
           DEPLOY_WEBHOOK_URL: ${{ secrets.DEPLOY_WEBHOOK_URL }}
         run: |
-          test -n "$DEPLOY_WEBHOOK_URL"
+          if [ -z "$DEPLOY_WEBHOOK_URL" ]; then
+            echo "::warning::DEPLOY_WEBHOOK_URL is not configured for ${DEPLOY_ENV}; image and artifacts were published, skipping remote deploy trigger."
+            exit 0
+          fi
           curl --fail-with-body --silent --show-error \
             -H 'Content-Type: application/json' \
             --data "{\"environment\":\"${DEPLOY_ENV}\",\"image\":\"${REGISTRY}/${IMAGE_NAME}@${{ steps.push.outputs.digest }}\",\"commit\":\"${GITHUB_SHA}\"}" \

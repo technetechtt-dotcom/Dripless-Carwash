@@ -91,7 +91,14 @@ const readViteEnv = (key: string): string | undefined => {
   }
 };
 
-const useMockApi = (): boolean => readViteEnv('VITE_USE_MOCK_API') === 'true';
+const useMockApi = (): boolean => {
+  if (readViteEnv('VITE_USE_MOCK_API') !== 'true') return false;
+  // Never allow mock API in production builds.
+  if (typeof import.meta !== 'undefined' && (import.meta as { env?: { PROD?: boolean } }).env?.PROD) {
+    return false;
+  }
+  return true;
+};
 
 const getApiBaseUrl = (): string => {
   const fromEnv = readViteEnv('VITE_API_BASE_URL');
@@ -2825,7 +2832,13 @@ export const bookingProofApi = {
   sendMessage: (bookingId: string, body: string) =>
     requestApi<Record<string, unknown>>(`/bookings/${encodeURIComponent(bookingId)}/messages`, { method: 'POST', token: getBearerToken(), body: { body } }),
   rate: (bookingId: string, stars: number, comment?: string) =>
-    requestApi<Record<string, unknown>>(`/bookings/${encodeURIComponent(bookingId)}/rating`, { method: 'POST', token: getBearerToken(), body: { stars, comment } })
+    requestApi<Record<string, unknown>>(`/bookings/${encodeURIComponent(bookingId)}/rating`, { method: 'POST', token: getBearerToken(), body: { stars, comment } }),
+  rateCustomer: (bookingId: string, stars: number, comment?: string) =>
+    requestApi<Record<string, unknown>>(`/bookings/${encodeURIComponent(bookingId)}/customer-rating`, {
+      method: 'POST',
+      token: getBearerToken(),
+      body: { stars, comment }
+    })
 };
 
 export const geoApi = {

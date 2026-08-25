@@ -52,7 +52,13 @@ Record times and outcomes for **one** booking:
 | Cancel before en route → full refund | ☐ | |
 | Cancel after dispatch → R25 fee | ☐ | |
 | Failed payment → no PAID booking | ☐ | |
+| Ozow Cancelled / Error webhook → FAILED (sandbox) | ☐ | |
+| Ozow amount-mismatch webhook → rejected | ☐ | |
 | Duplicate webhook → single success event | ☐ | |
+| Customer rates driver; aggregate persists | ☐ | |
+| Driver rates customer; aggregate persists | ☐ | |
+| Evidence before/after on private S3 | ☐ | see `docs/EVIDENCE_S3_DRILL.md` |
+| Android screen-lock / background GPS | ☐ | see `docs/ANDROID_FIELD_TEST.md` |
 | Out-of-zone address → rejected | ☐ | |
 | Outside hours → rejected | ☐ | |
 | Unverified driver → cannot receive job | ☐ | |

@@ -127,6 +127,243 @@ jobs:
           fi
           echo "Migration status: clean"
 
+  golden-path:
+    name: golden-path
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend-api
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: dripless_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      redis:
+        image: redis:7
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      NODE_ENV: test
+      DEMO_MODE: 'false'
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/dripless_test
+      CORS_ORIGINS: http://localhost:5173
+      BCRYPT_COST: '10'
+      ACCESS_TOKEN_TTL_MINUTES: '15'
+      REFRESH_TOKEN_TTL_DAYS: '7'
+      REDIS_URL: redis://localhost:6379
+      OZOW_PRIVATE_KEY: test-ozow-private-key
+      OZOW_SITE_CODE: TST-SITE
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Setup Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: backend-api/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Prisma migrate + generate
+        run: |
+          npx prisma migrate deploy
+          npm run prisma:generate
+
+      - name: Golden path + GPS realtime tests
+        working-directory: .
+        run: npm run test:golden
+
+  e2e-cross-platform:
+    name: e2e-cross-platform
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: dripless_e2e
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      redis:
+        image: redis:7
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      NODE_ENV: test
+      DEMO_MODE: 'true'
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/dripless_e2e
+      CORS_ORIGINS: http://127.0.0.1:4173,http://127.0.0.1:4174,http://127.0.0.1:4175
+      BCRYPT_COST: '10'
+      ACCESS_TOKEN_TTL_MINUTES: '15'
+      REFRESH_TOKEN_TTL_DAYS: '7'
+      REDIS_URL: redis://localhost:6379
+      PUBLIC_API_URL: http://127.0.0.1:4000
+      CUSTOMER_APP_URL: http://127.0.0.1:4173
+      DRIVER_APP_URL: http://127.0.0.1:4174
+      OPS_APP_URL: http://127.0.0.1:4175
+      E2E_API_URL: http://127.0.0.1:4000
+      E2E_DRIVER_EMAIL: driver@demo.dripless.local
+      E2E_DRIVER_PASSWORD: DemoPass123!
+      E2E_OPS_EMAIL: ops@demo.dripless.local
+      E2E_OPS_PASSWORD: DemoPass123!
+      CUSTOMER_URL: http://127.0.0.1:4173
+      DRIVER_URL: http://127.0.0.1:4174
+      OPS_URL: http://127.0.0.1:4175
+      E2E_GEOLOCATION: '1'
+      VITE_API_BASE_URL: http://127.0.0.1:4000
+      VITE_USE_MOCK_API: 'false'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Setup Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            backend-api/package-lock.json
+            Dripless Customer/package-lock.json
+            Dripless Driver/package-lock.json
+            Dripless Ops Admin/package-lock.json
+
+      - name: Install backend + seed demo actors
+        working-directory: backend-api
+        run: |
+          npm ci
+          npx prisma migrate deploy
+          npm run prisma:generate
+          npm run db:seed
+
+      - name: Start API
+        working-directory: backend-api
+        run: |
+          npx tsx src/index.ts > /tmp/dripless-api.log 2>&1 &
+          for i in $(seq 1 60); do
+            if curl -sf http://127.0.0.1:4000/health >/dev/null; then
+              echo "API ready"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "API failed to start" >&2
+          cat /tmp/dripless-api.log >&2
+          exit 1
+
+      - name: Build three apps
+        run: |
+          npm --prefix "Dripless Customer" ci
+          npm --prefix "Dripless Driver" ci
+          npm --prefix "Dripless Ops Admin" ci
+          npm --prefix "Dripless Customer" run build
+          npm --prefix "Dripless Driver" run build
+          npm --prefix "Dripless Ops Admin" run build
+
+      - name: Serve three apps
+        run: |
+          npx --yes serve -l 4173 "Dripless Customer/dist" > /tmp/serve-customer.log 2>&1 &
+          npx --yes serve -l 4174 "Dripless Driver/dist" > /tmp/serve-driver.log 2>&1 &
+          npx --yes serve -l 4175 "Dripless Ops Admin/dist" > /tmp/serve-ops.log 2>&1 &
+          sleep 3
+
+      - name: Install Playwright
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
+
+      - name: Run three-app Playwright E2E
+        run: npm run test:e2e
+
+      - name: Upload Playwright report on failure
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: playwright-e2e-report
+          path: e2e-report/
+          if-no-files-found: ignore
+
+  backup-restore-drill:
+    name: backup-restore-drill
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: dripless_backup_src
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      NODE_ENV: test
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/dripless_backup_src
+      CORS_ORIGINS: http://localhost:5173
+      BCRYPT_COST: '10'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Setup Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: backend-api/package-lock.json
+
+      - name: Migrate source DB
+        working-directory: backend-api
+        run: |
+          npm ci
+          npx prisma migrate deploy
+
+      - name: Dump → restore into isolated drill DB → verify migrations
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq postgresql-client
+          export PGPASSWORD=postgres
+          psql -h localhost -U postgres -c "CREATE DATABASE dripless_restore_drill;"
+          pg_dump -h localhost -U postgres -d dripless_backup_src --format=custom --file=drill.dump
+          pg_restore --clean --if-exists --no-owner --no-acl \
+            -h localhost -U postgres -d dripless_restore_drill drill.dump
+          cd backend-api
+          DATABASE_URL=postgresql://postgres:postgres@localhost:5432/dripless_restore_drill \
+            npx prisma migrate status
+
   secret-scan:
     runs-on: ubuntu-latest
     steps:

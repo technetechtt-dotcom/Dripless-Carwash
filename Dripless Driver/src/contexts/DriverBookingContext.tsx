@@ -77,7 +77,7 @@ export const DriverBookingProvider: React.FC<{
       'RIDE',
     status: contract.status,
     customerName: contract.customerName || 'Customer',
-    customerRating: contract.customerRating || 4.8,
+    customerRating: typeof contract.customerRating === 'number' ? contract.customerRating : 0,
     pickupLocation: contract.pickupLocation,
     pickupCoordinates: contract.pickupCoordinates ?? null,
     dropoffLocation: contract.destinationLocation || undefined,
@@ -85,8 +85,8 @@ export const DriverBookingProvider: React.FC<{
     pooledWithBookingId: contract.pooledWithBookingId ?? null,
     dispatchReason: contract.latestAudit?.reason ?? null,
     earnings: typeof contract.driverEarningsZar === 'number' ? contract.driverEarningsZar : 0,
-    distance: contract.distance || '2.4 km',
-    duration: contract.duration || '12 min',
+    distance: contract.distance || '',
+    duration: contract.duration || '',
     timestamp: contract.createdAt
   });
   const { driver } = useDriverAuth();
@@ -104,14 +104,18 @@ export const DriverBookingProvider: React.FC<{
   const performanceStats = useMemo<PerformanceStats>(() => {
     const totalCompleted = completedBookings.length;
     const completionRate = totalCompleted > 0 ? 100 : 0;
+    // `rating` on completed jobs is the customer→driver score for that booking.
+    const rated = completedBookings.filter((b) => typeof b.rating === 'number' && b.rating > 0);
+    const avgRating =
+      rated.length > 0 ? rated.reduce((sum, b) => sum + b.rating, 0) / rated.length : 0;
     return {
       acceptanceRate: activeJob || incomingJob || totalCompleted > 0 ? 100 : 0,
       cancellationRate: 0,
       onTimeRate: completionRate,
-      rating: totalCompleted > 0 ? 4.9 : 0,
+      rating: rated.length ? Math.round(avgRating * 10) / 10 : 0,
       totalRides: totalCompleted
     };
-  }, [activeJob, completedBookings.length, incomingJob]);
+  }, [activeJob, completedBookings, incomingJob]);
   // Chat State
   const [messages, setMessages] = useState<Message[]>([]);
   const loadMessages = useCallback(async (bookingId: string) => {
@@ -375,10 +379,26 @@ export const DriverBookingProvider: React.FC<{
     }
   };
   const submitRating = (rating: number, feedback?: string) => {
-    console.log(
-      `Rated job ${jobToRate?.id} with ${rating} stars. Feedback: ${feedback}`
-    );
+    const job = jobToRate;
+    if (!job) return;
     setJobToRate(null);
+    if (!apiRuntimeConfig.isRemoteEnabled()) {
+      showToast('Remote API required to persist ratings', 'error');
+      return;
+    }
+    void bookingProofApi
+      .rateCustomer(job.id, rating, feedback)
+      .then(() => {
+        showToast('Customer rating saved', 'success');
+        setCompletedBookings((prev) =>
+          prev.map((entry) =>
+            entry.id === job.id ? { ...entry, customerRating: rating } : entry
+          )
+        );
+      })
+      .catch((error) => {
+        showToast(error instanceof Error ? error.message : 'Could not save rating', 'error');
+      });
   };
   const closeRatingModal = () => {
     setJobToRate(null);

@@ -651,6 +651,48 @@ bookingsRouter.post(
 );
 
 bookingsRouter.post(
+  '/:bookingId/customer-rating',
+  authRequired,
+  roleRequired(['driver']),
+  validate(z.object({ stars: z.number().int().min(1).max(5), comment: z.string().max(2000).optional() }).strict()),
+  async (req, res, next) => {
+    try {
+      const booking = await prisma.booking.findUnique({ where: { id: String(req.params.bookingId) } });
+      if (!booking || booking.driverId !== req.auth!.profileId) throw new HttpError(403, 'Forbidden');
+      if (booking.status !== 'COMPLETED') throw new HttpError(400, 'Only completed bookings can be rated');
+      const row = await prisma.customerRating.upsert({
+        where: { bookingId_driverId: { bookingId: booking.id, driverId: req.auth!.profileId } },
+        update: { stars: req.body.stars, comment: req.body.comment },
+        create: {
+          bookingId: booking.id,
+          customerId: booking.customerId,
+          driverId: req.auth!.profileId,
+          stars: req.body.stars,
+          comment: req.body.comment
+        }
+      });
+      const aggregate = await prisma.customerRating.aggregate({
+        where: { customerId: booking.customerId },
+        _avg: { stars: true }
+      });
+      await prisma.customerProfile.update({
+        where: { id: booking.customerId },
+        data: { rating: aggregate._avg.stars || 5 }
+      });
+      publishEvent('booking.status', {
+        bookingId: booking.id,
+        status: booking.status,
+        customerRated: true,
+        stars: req.body.stars
+      });
+      res.status(201).json(row);
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+bookingsRouter.post(
   '/:bookingId/cancel',
   authRequired,
   validate(z.object({ reason: z.string().max(500).optional() })),

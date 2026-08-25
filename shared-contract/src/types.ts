@@ -45,6 +45,8 @@ export interface CustomerProfile {
   address?: string;
   walletBalance: number;
   ecoPoints: number;
+  /** Aggregate rating from drivers (authoritative backend). */
+  rating?: number;
   status: AccountStatus;
   createdAt: string;
   updatedAt: string;

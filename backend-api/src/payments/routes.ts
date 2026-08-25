@@ -7,7 +7,7 @@ import { validate } from '../middleware/validate.js';
 import { HttpError } from '../middleware/error.js';
 import { enqueue } from '../lib/queue.js';
 import { verifyPaystackTransaction } from './paystack.js';
-import { ozowStatusIsPaid } from './ozow.js';
+import { ozowAmountMatches, ozowStatusIsPaid } from './ozow.js';
 import { applyPayoutEvent } from '../payouts/routes.js';
 import {
   applyChargeback,
@@ -329,6 +329,10 @@ paymentsRouter.post('/webhooks/ozow', async (req, res, next) => {
       }
     });
     if (!payment) throw new HttpError(404, 'Payment not found');
+    const currency = String(body.CurrencyCode || body.currencyCode || 'ZAR');
+    if (!ozowAmountMatches(payment.amountZar, body.Amount || body.amount || '', currency)) {
+      throw new HttpError(400, 'Amount mismatch');
+    }
     const amountCents = Math.round(Number(body.Amount || body.amount) * 100);
     const status = String(body.Status || body.status || '');
     const duplicate = await processClaimedWebhook(claim, async () => {
@@ -338,7 +342,7 @@ paymentsRouter.post('/webhooks/ozow', async (req, res, next) => {
           providerEventId: eventId,
           payload: body,
           amountCents: Number.isFinite(amountCents) ? amountCents : undefined,
-          currency: String(body.CurrencyCode || 'ZAR')
+          currency
         });
       } else {
         await applyPaymentFailed({

@@ -23,9 +23,10 @@ jobs:
           AWS_DEFAULT_REGION: ${{ secrets.AWS_REGION }}
         run: |
           set -euo pipefail
-          test -n "$DATABASE_URL"
-          test -n "$BACKUP_S3_URI"
-          test -n "$BACKUP_KMS_KEY_ID"
+          if [ -z "${DATABASE_URL:-}" ] || [ -z "${BACKUP_S3_URI:-}" ] || [ -z "${BACKUP_KMS_KEY_ID:-}" ]; then
+            echo "::warning::production-backup secrets are not fully configured; skipping nightly backup until DATABASE_URL, BACKUP_S3_URI, and BACKUP_KMS_KEY_ID are set."
+            exit 0
+          fi
           backup="dripless-$(date -u +%Y%m%dT%H%M%SZ).dump"
           docker run --rm -e DATABASE_URL -v "$PWD:/backup" postgres:17 \
             pg_dump --format=custom --compress=9 --no-owner --no-acl --file="/backup/$backup" "$DATABASE_URL"

@@ -272,6 +272,7 @@ model CustomerProfile {
   walletCashBalance  Int            @default(0)
   walletPromoBalance Int            @default(0)
   ecoPoints          Int            @default(0)
+  rating             Float          @default(5)
   referralCode       String?        @unique
   loyaltyTier        String         @default("BRONZE")
   marketingConsentAt DateTime?
@@ -283,6 +284,7 @@ model CustomerProfile {
   addresses          SavedAddress[]
   complaints         Complaint[]    @relation("CustomerComplaints")
   ratings            Rating[]
+  customerRatings    CustomerRating[]
   fleetAccounts      FleetAccount[] @relation("FleetOwner")
 
   @@index([status])
@@ -324,6 +326,7 @@ model DriverProfile {
   payoutAccount      DriverPayoutAccount?
   availability       DriverAvailability[]
   ratings            Rating[]                 @relation("DriverRatings")
+  customerRatings    CustomerRating[]         @relation("DriverCustomerRatings")
 
   @@index([status])
   @@index([verificationStatus])
@@ -547,6 +550,7 @@ model Booking {
   washChecklist                 WashChecklist?
   complaints                    Complaint[]
   ratings                       Rating[]
+  customerRatings               CustomerRating[]
   messages                      BookingMessage[]
   consumableUsage               ConsumableUsage[]
   earnings                      DriverEarning[]
@@ -1181,6 +1185,24 @@ model Rating {
   createdAt  DateTime        @default(now())
 
   @@unique([bookingId, customerId])
+}
+
+/** Driver rates customer after a completed booking. */
+model CustomerRating {
+  id         String          @id @default(cuid())
+  bookingId  String
+  booking    Booking         @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  customerId String
+  customer   CustomerProfile @relation(fields: [customerId], references: [id])
+  driverId   String
+  driver     DriverProfile   @relation("DriverCustomerRatings", fields: [driverId], references: [id])
+  stars      Int
+  comment    String?
+  createdAt  DateTime        @default(now())
+
+  @@unique([bookingId, driverId])
+  @@index([customerId])
+  @@index([driverId])
 }
 
 model BookingMessage {

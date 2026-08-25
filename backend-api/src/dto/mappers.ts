@@ -40,12 +40,14 @@ export function mapBookingDto(booking: {
   scheduledAt?: Date | null;
   createdAt: Date;
   updatedAt: Date;
-  customer?: { name?: string | null } | null;
+  customer?: { name?: string | null; rating?: number | null } | null;
 }) {
   return {
     id: booking.id,
     customerId: booking.customerId,
     customerName: booking.customer?.name,
+    customerRating:
+      typeof booking.customer?.rating === 'number' ? booking.customer.rating : undefined,
     driverId: booking.driverId,
     serviceType: serviceSlugToType(booking.serviceSlug),
     serviceName: booking.serviceName,
@@ -144,6 +146,7 @@ export function mapCustomerProfile(row: {
   status: string;
   walletBalance: number;
   ecoPoints: number;
+  rating?: number;
   createdAt: Date;
   updatedAt: Date;
   user?: { email: string } | null;
@@ -156,6 +159,7 @@ export function mapCustomerProfile(row: {
     walletBalance: fromCents(row.walletBalance),
     walletBalanceCents: row.walletBalance,
     ecoPoints: row.ecoPoints,
+    rating: typeof row.rating === 'number' ? row.rating : 5,
     status: row.status,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString()
