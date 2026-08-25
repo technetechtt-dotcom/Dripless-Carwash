@@ -123,6 +123,8 @@ export interface BookingContract {
   status: BookingStatus;
   customerName?: string;
   customerRating?: number;
+  /** Customer→driver stars for this booking when rated. */
+  rating?: number;
   distance?: string;
   duration?: string;
   pooledWithBookingId?: string | null;

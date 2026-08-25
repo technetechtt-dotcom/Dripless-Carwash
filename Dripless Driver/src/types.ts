@@ -17,6 +17,8 @@ export interface Job {
   pooledWithBookingId?: string | null;
   dispatchReason?: string | null;
   earnings: number;
+  /** Customer→driver rating for this booking when present. */
+  rating?: number;
   distance: string;
   duration: string;
   timestamp: string;

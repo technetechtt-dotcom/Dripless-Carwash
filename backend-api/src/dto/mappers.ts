@@ -41,6 +41,7 @@ export function mapBookingDto(booking: {
   createdAt: Date;
   updatedAt: Date;
   customer?: { name?: string | null; rating?: number | null } | null;
+  ratings?: Array<{ stars: number }> | null;
 }) {
   return {
     id: booking.id,
@@ -48,6 +49,7 @@ export function mapBookingDto(booking: {
     customerName: booking.customer?.name,
     customerRating:
       typeof booking.customer?.rating === 'number' ? booking.customer.rating : undefined,
+    rating: booking.ratings?.[0]?.stars,
     driverId: booking.driverId,
     serviceType: serviceSlugToType(booking.serviceSlug),
     serviceName: booking.serviceName,
