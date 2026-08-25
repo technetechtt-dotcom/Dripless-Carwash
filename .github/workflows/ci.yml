@@ -414,9 +414,10 @@ jobs:
           AWS_DEFAULT_REGION: us-east-1
         run: |
           aws --endpoint-url http://127.0.0.1:9000 s3 mb s3://dripless-evidence
-          aws --endpoint-url http://127.0.0.1:9000 s3api put-public-access-block \
-            --bucket dripless-evidence \
-            --public-access-block-configuration BlockPublicAcls=true,IgnorePublicAcls=true,BlockPublicPolicy=true,RestrictPublicBuckets=true
+          # MinIO buckets are private by default (no anonymous policy).
+          aws --endpoint-url http://127.0.0.1:9000 s3api get-bucket-policy --bucket dripless-evidence 2>/dev/null \
+            && echo "Unexpected public policy" && exit 1 \
+            || echo "Bucket has no public policy (private)"
 
       - name: Install backend and run private S3 evidence test
         working-directory: backend-api
