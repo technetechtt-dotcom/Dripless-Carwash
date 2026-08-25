@@ -7,6 +7,8 @@ import React, {
   useState,
   type ReactNode
 } from 'react';
+import { Capacitor } from '@capacitor/core';
+import { Geolocation } from '@capacitor/geolocation';
 import {
   apiRuntimeConfig,
   bookingApi,
@@ -21,6 +23,7 @@ import { isBookingLifecycleEvent } from '@shared/events';
 import { interpolateGeoPoint, textToGeoPoint } from '@shared/maps';
 import { Booking, Job, JobStatus, PerformanceStats, Message } from '../types';
 import { normaliseGpsSample } from '../utils/gps';
+import { startDriverLocationWatch } from '../utils/nativeLocation';
 import { useDriverAuth } from './DriverAuthContext';
 import { useToast } from './ToastContext';
 import type { BookingContract } from '@shared/types';
@@ -210,7 +213,8 @@ export const DriverBookingProvider: React.FC<{
     };
 
     let intervalId: number | null = null;
-    let watchId: number | null = null;
+    let stopWatch: (() => void) | null = null;
+    let cancelled = false;
 
     const startFallbackInterval = () => {
       void emitSimulatedLocation();
@@ -219,51 +223,51 @@ export const DriverBookingProvider: React.FC<{
       }, 10000);
     };
 
-    if (typeof navigator !== 'undefined' && navigator.geolocation) {
-      watchId = navigator.geolocation.watchPosition(
-        (position) => {
-          try {
-            const sample = normaliseGpsSample(position);
-            void publishPoint(
-              sample.lat,
-              sample.lng,
-              sample.speedKph,
-              sample.heading,
-              sample.accuracyM,
-              sample.recordedAt
-            );
-          } catch (cause) {
-            void driverOperationsApi.setOnline(false).catch(() => undefined);
-            setOnlineState(false);
-            showToast(cause instanceof Error ? cause.message : 'GPS sample was rejected', 'error');
-          }
-        },
-        () => {
-          if (apiRuntimeConfig.isMockEnabled() && intervalId === null) {
-            startFallbackInterval();
-          } else {
-            void driverOperationsApi.setOnline(false).catch(() => undefined);
-            setOnlineState(false);
-            showToast('GPS permission or signal was lost. You are offline.', 'error');
-          }
-        },
-        {
-          enableHighAccuracy: true,
-          maximumAge: 5000,
-          timeout: 10000
-        }
-      );
-    } else if (apiRuntimeConfig.isMockEnabled()) {
-      startFallbackInterval();
-    } else {
+    const goOffline = (message: string) => {
+      if (apiRuntimeConfig.isMockEnabled() && intervalId === null) {
+        startFallbackInterval();
+        return;
+      }
       void driverOperationsApi.setOnline(false).catch(() => undefined);
       setOnlineState(false);
-    }
+      showToast(message, 'error');
+    };
+
+    void startDriverLocationWatch({
+      onSample: (sample) => {
+        void publishPoint(
+          sample.lat,
+          sample.lng,
+          sample.speedKph,
+          sample.heading,
+          sample.accuracyM,
+          sample.recordedAt
+        );
+      },
+      onError: (message) => {
+        if (cancelled) return;
+        goOffline(message.includes('offline') ? message : `${message}. You are offline.`);
+      }
+    })
+      .then((handle) => {
+        if (cancelled) {
+          handle.stop();
+          return;
+        }
+        stopWatch = handle.stop;
+      })
+      .catch(() => {
+        if (cancelled) return;
+        if (apiRuntimeConfig.isMockEnabled()) {
+          startFallbackInterval();
+        } else {
+          goOffline('GPS failed to start. You are offline.');
+        }
+      });
 
     return () => {
-      if (watchId !== null && navigator.geolocation) {
-        navigator.geolocation.clearWatch(watchId);
-      }
+      cancelled = true;
+      stopWatch?.();
       if (intervalId !== null) {
         window.clearInterval(intervalId);
       }
@@ -433,15 +437,40 @@ export const DriverBookingProvider: React.FC<{
       return;
     }
     if (apiRuntimeConfig.isRemoteEnabled()) {
-      if (!navigator.geolocation) throw new Error('GPS is not available on this device');
-      const position = await new Promise<GeolocationPosition>((resolve, reject) =>
-        navigator.geolocation.getCurrentPosition(resolve, reject, {
+      let sample;
+      if (Capacitor.isNativePlatform()) {
+        const permissions = await Geolocation.requestPermissions();
+        if (permissions.location !== 'granted' && permissions.coarseLocation !== 'granted') {
+          throw new Error('Location permission is required to go online');
+        }
+        const position = await Geolocation.getCurrentPosition({
           enableHighAccuracy: true,
-          maximumAge: 0,
-          timeout: 15000
-        })
-      );
-      const sample = normaliseGpsSample(position);
+          timeout: 15_000,
+          maximumAge: 0
+        });
+        sample = normaliseGpsSample({
+          coords: {
+            latitude: position.coords.latitude,
+            longitude: position.coords.longitude,
+            accuracy: position.coords.accuracy ?? 999,
+            altitude: position.coords.altitude,
+            altitudeAccuracy: position.coords.altitudeAccuracy,
+            heading: position.coords.heading,
+            speed: position.coords.speed
+          } as GeolocationCoordinates,
+          timestamp: position.timestamp
+        });
+      } else {
+        if (!navigator.geolocation) throw new Error('GPS is not available on this device');
+        const position = await new Promise<GeolocationPosition>((resolve, reject) =>
+          navigator.geolocation.getCurrentPosition(resolve, reject, {
+            enableHighAccuracy: true,
+            maximumAge: 0,
+            timeout: 15000
+          })
+        );
+        sample = normaliseGpsSample(position);
+      }
       await trackingApi.updateDriverLocation({
         driverId: driver.id,
         ...sample

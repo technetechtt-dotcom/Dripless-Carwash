@@ -39,6 +39,12 @@ function getS3Client() {
   return s3Client;
 }
 
+/** AWS SSE-S3; omitted for custom endpoints (MinIO/R2) that reject or ignore the header. */
+function s3PutEncryption(): { ServerSideEncryption?: 'AES256' } {
+  if (env.S3_ENDPOINT) return {};
+  return { ServerSideEncryption: 'AES256' };
+}
+
 function parseDataUrl(dataUrl: string): { declaredMime: string; buffer: Buffer } {
   const match = /^data:([^;,]+);base64,([a-zA-Z0-9+/=\r\n]+)$/.exec(dataUrl);
   if (!match) throw new HttpError(400, 'Evidence must be a base64 data URL');
@@ -165,7 +171,7 @@ export async function storeEvidenceObject(input: {
         ContentType: metadata.mimeType,
         ContentLength: metadata.byteSize,
         Metadata: { 'sha256-hex': metadata.checksum },
-        ServerSideEncryption: 'AES256'
+        ...s3PutEncryption()
       })
     );
     return { key, ...metadata, url: `private://${key}` };
@@ -211,7 +217,7 @@ export async function storePrivateBuffer(input: {
         ContentType: metadata.mimeType,
         ContentLength: metadata.byteSize,
         Metadata: { 'sha256-hex': metadata.checksum },
-        ServerSideEncryption: 'AES256'
+        ...s3PutEncryption()
       })
     );
   } else {
@@ -238,7 +244,7 @@ export async function createSignedUpload(input: {
     ContentType: input.mimeType,
     ContentLength: input.byteSize,
     Metadata: { 'sha256-hex': input.checksum },
-    ServerSideEncryption: 'AES256'
+    ...s3PutEncryption()
   });
   return getSignedUrl(getS3Client(), command, { expiresIn: 10 * 60 });
 }
@@ -286,7 +292,7 @@ export async function verifySignedUpload(input: {
         ContentType: metadata.mimeType,
         ContentLength: metadata.byteSize,
         Metadata: { 'sha256-hex': metadata.checksum },
-        ServerSideEncryption: 'AES256'
+        ...s3PutEncryption()
       })
     );
   }

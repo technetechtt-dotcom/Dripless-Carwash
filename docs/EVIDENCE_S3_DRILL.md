@@ -1,19 +1,16 @@
 # Evidence upload — private object storage
 
-## Automated (CI / local)
+## Automated (CI)
 
-`backend-api/src/evidence/s3-integration.test.ts` runs only when:
-
-```bash
-EVIDENCE_STORAGE_PROVIDER=s3
-S3_BUCKET=...
-S3_ACCESS_KEY=...
-S3_SECRET_KEY=...
-# optional: S3_ENDPOINT, S3_REGION, S3_FORCE_PATH_STYLE
-```
+Job `evidence-s3` boots ephemeral **MinIO**, creates a private bucket, and runs:
 
 ```bash
 cd backend-api
+EVIDENCE_STORAGE_PROVIDER=s3 \
+S3_BUCKET=dripless-evidence \
+S3_ACCESS_KEY=... S3_SECRET_KEY=... \
+S3_ENDPOINT=http://127.0.0.1:9000 \
+S3_FORCE_PATH_STYLE=true \
 npm test -- src/evidence/s3-integration.test.ts
 ```
 
