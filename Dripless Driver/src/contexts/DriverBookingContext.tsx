@@ -85,6 +85,7 @@ export const DriverBookingProvider: React.FC<{
     pooledWithBookingId: contract.pooledWithBookingId ?? null,
     dispatchReason: contract.latestAudit?.reason ?? null,
     earnings: typeof contract.driverEarningsZar === 'number' ? contract.driverEarningsZar : 0,
+    rating: typeof contract.rating === 'number' ? contract.rating : undefined,
     distance: contract.distance || '',
     duration: contract.duration || '',
     timestamp: contract.createdAt
@@ -107,7 +108,7 @@ export const DriverBookingProvider: React.FC<{
     // `rating` on completed jobs is the customer→driver score for that booking.
     const rated = completedBookings.filter((b) => typeof b.rating === 'number' && b.rating > 0);
     const avgRating =
-      rated.length > 0 ? rated.reduce((sum, b) => sum + b.rating, 0) / rated.length : 0;
+      rated.length > 0 ? rated.reduce((sum, b) => sum + (b.rating as number), 0) / rated.length : 0;
     return {
       acceptanceRate: activeJob || incomingJob || totalCompleted > 0 ? 100 : 0,
       cancellationRate: 0,

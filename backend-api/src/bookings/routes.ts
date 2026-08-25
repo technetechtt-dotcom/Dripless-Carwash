@@ -299,7 +299,7 @@ bookingsRouter.get('/', authRequired, async (req, res, next) => {
     if (req.auth!.role === 'customer') {
       const rows = await prisma.booking.findMany({
         where: { customerId: req.auth!.profileId },
-        include: { customer: true },
+        include: { customer: true, ratings: true },
         orderBy: { updatedAt: 'desc' }
       });
       return res.json(rows.map(mapBookingDto));
@@ -307,13 +307,13 @@ bookingsRouter.get('/', authRequired, async (req, res, next) => {
     if (req.auth!.role === 'driver') {
       const rows = await prisma.booking.findMany({
         where: { driverId: req.auth!.profileId },
-        include: { customer: true },
+        include: { customer: true, ratings: true },
         orderBy: { updatedAt: 'desc' }
       });
       return res.json(rows.map(mapBookingDto));
     }
     const rows = await prisma.booking.findMany({
-      include: { customer: true },
+      include: { customer: true, ratings: true },
       orderBy: { updatedAt: 'desc' }
     });
     res.json(rows.map(mapBookingDto));
@@ -326,7 +326,7 @@ bookingsRouter.get('/:bookingId', authRequired, async (req, res, next) => {
   try {
     const booking = await prisma.booking.findUnique({
       where: { id: String(req.params.bookingId) },
-      include: { customer: true }
+      include: { customer: true, ratings: true }
     });
     if (!booking) throw new HttpError(404, 'Booking not found');
     if (req.auth!.role === 'customer' && booking.customerId !== req.auth!.profileId) {
