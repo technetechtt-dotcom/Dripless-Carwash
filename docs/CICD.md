@@ -4,8 +4,8 @@
 
 - Status check: `backend-check`
 - Status checks: `app-checks` for Customer, Driver, and Ops
-- Status checks: `golden-path`, `e2e-cross-platform`, `backup-restore-drill`
-- Status checks: `codeql`, `security-audit`, `container-scan`, and `repository-scan`
+- Status checks: `golden-path`, `e2e-cross-platform`, `backup-restore-drill`, `evidence-s3`
+- Status checks: `codeql`, `security-audit (backend-api|Customer|Driver|Ops)`, `container-scan`, and `repository-scan`
 - At least one fresh approving review from someone other than the last pusher
 - Resolved review conversations
 - No force-push or branch deletion
