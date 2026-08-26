@@ -655,7 +655,7 @@ export async function reconcilePayments() {
         }
         providerAmount = provider.amount;
         providerCurrency = String(provider.currency || '');
-        providerStatus = provider.status;
+        providerStatus = String(provider.status || '');
         providerPaid = provider.status === 'success';
         providerEventId = `reconcile:${provider.id || provider.reference}`;
       }

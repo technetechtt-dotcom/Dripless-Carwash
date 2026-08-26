@@ -10,11 +10,23 @@ import {
   removeQueuedLocations
 } from './offlineQueue';
 
-describe('offlineQueue', () => {
-  beforeEach(() => {
-    localStorage.clear();
-  });
+const memory = new Map<string, string>();
 
+beforeEach(() => {
+  memory.clear();
+  vi.stubGlobal('localStorage', {
+    getItem: (key: string) => memory.get(key) ?? null,
+    setItem: (key: string, value: string) => {
+      memory.set(key, value);
+    },
+    removeItem: (key: string) => {
+      memory.delete(key);
+    },
+    clear: () => memory.clear()
+  });
+});
+
+describe('offlineQueue', () => {
   it('queues and flushes GPS samples in order', async () => {
     enqueueLocation({
       driverId: 'drv_1',
