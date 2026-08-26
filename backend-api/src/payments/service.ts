@@ -18,7 +18,9 @@ import {
 } from './paystack.js';
 import {
   initializeOzow,
-  verifyOzowNotifySignature
+  ozowStatusIsPaid,
+  verifyOzowNotifySignature,
+  verifyOzowTransactionByReference
 } from './ozow.js';
 
 export function payloadHash(payload: unknown): string {
@@ -402,9 +404,16 @@ export async function processRefund(input: {
     externalRef = String(result.data?.id || '');
     await prisma.refund.update({ where: { id: refund.id }, data: { externalRef } });
     return prisma.refund.findUnique({ where: { id: refund.id } });
-  } else if (payment.provider === 'payfast' || payment.provider === 'ozow') {
+  } else if (payment.provider === 'ozow') {
+    // Ozow does not expose a production refund API yet; credit the customer wallet instead.
+    await prisma.refund.update({
+      where: { id: refund.id },
+      data: { destination: 'WALLET' }
+    });
+    return finalizeRefund(refund.id);
+  } else if (payment.provider === 'payfast') {
     await prisma.refund.update({ where: { id: refund.id }, data: { status: 'FAILED' } });
-    throw new HttpError(501, `${payment.provider} refunds are not enabled; Paystack is the production provider`);
+    throw new HttpError(501, 'Payfast refunds are not enabled');
   }
   return finalizeRefund(refund.id);
 }
@@ -589,11 +598,11 @@ export function mapPaymentDto(row: {
 
 export async function reconcilePayments() {
   const run = await prisma.paymentReconciliationRun.create({
-    data: { provider: 'paystack' }
+    data: { provider: env.PAYMENTS_PROVIDER === 'ozow' ? 'ozow' : 'paystack' }
   });
   try {
     const candidates = await prisma.payment.findMany({
-      where: { provider: 'paystack', externalRef: { not: null } },
+      where: { provider: { in: ['paystack', 'ozow'] }, externalRef: { not: null } },
       take: 500,
       orderBy: { createdAt: 'desc' }
     });
@@ -601,24 +610,58 @@ export async function reconcilePayments() {
     let mismatched = 0;
     let missingProvider = 0;
     for (const payment of candidates) {
-      const provider = await verifyPaystackTransaction(payment.externalRef!);
-      if (!provider) {
-        missingProvider += 1;
-        await prisma.paymentReconciliationItem.create({
-          data: {
-            runId: run.id,
-            paymentId: payment.id,
-            externalRef: payment.externalRef,
-            expectedCents: payment.amountZar,
-            expectedStatus: payment.status,
-            result: 'MISSING_PROVIDER'
-          }
-        });
-        continue;
+      let providerAmount: number | undefined;
+      let providerCurrency = payment.currency;
+      let providerStatus = '';
+      let providerPaid = false;
+      let providerEventId = `reconcile:${payment.externalRef}`;
+
+      if (payment.provider === 'ozow') {
+        const remote = await verifyOzowTransactionByReference(payment.externalRef!);
+        if (!remote) {
+          missingProvider += 1;
+          await prisma.paymentReconciliationItem.create({
+            data: {
+              runId: run.id,
+              paymentId: payment.id,
+              externalRef: payment.externalRef,
+              expectedCents: payment.amountZar,
+              expectedStatus: payment.status,
+              result: 'MISSING_PROVIDER'
+            }
+          });
+          continue;
+        }
+        providerAmount = Math.round(Number(remote.Amount) * 100);
+        providerCurrency = String(remote.CurrencyCode || 'ZAR');
+        providerStatus = String(remote.Status || '');
+        providerPaid = ozowStatusIsPaid(providerStatus);
+        providerEventId = `reconcile:${remote.TransactionId || payment.externalRef}`;
+      } else {
+        const provider = await verifyPaystackTransaction(payment.externalRef!);
+        if (!provider) {
+          missingProvider += 1;
+          await prisma.paymentReconciliationItem.create({
+            data: {
+              runId: run.id,
+              paymentId: payment.id,
+              externalRef: payment.externalRef,
+              expectedCents: payment.amountZar,
+              expectedStatus: payment.status,
+              result: 'MISSING_PROVIDER'
+            }
+          });
+          continue;
+        }
+        providerAmount = provider.amount;
+        providerCurrency = String(provider.currency || '');
+        providerStatus = provider.status;
+        providerPaid = provider.status === 'success';
+        providerEventId = `reconcile:${provider.id || provider.reference}`;
       }
-      const amountMatches = provider.amount === payment.amountZar;
-      const currencyMatches = String(provider.currency || '').toUpperCase() === payment.currency;
-      const providerPaid = provider.status === 'success';
+
+      const amountMatches = providerAmount === payment.amountZar;
+      const currencyMatches = String(providerCurrency || '').toUpperCase() === payment.currency;
       const localPaid = ['PAID', 'PARTIALLY_REFUNDED', 'REFUNDED'].includes(payment.status);
       const statusMatches = providerPaid === localPaid;
       const result = amountMatches && currencyMatches && statusMatches ? 'MATCHED' : 'MISMATCH';
@@ -630,20 +673,20 @@ export async function reconcilePayments() {
           paymentId: payment.id,
           externalRef: payment.externalRef,
           expectedCents: payment.amountZar,
-          providerCents: provider.amount,
+          providerCents: providerAmount,
           expectedStatus: payment.status,
-          providerStatus: provider.status,
+          providerStatus,
           result,
-          detail: currencyMatches ? null : `Provider currency ${provider.currency}`
+          detail: currencyMatches ? null : `Provider currency ${providerCurrency}`
         }
       });
       if (amountMatches && currencyMatches && providerPaid && !localPaid) {
         await applyPaymentSuccess({
           paymentId: payment.id,
-          providerEventId: `reconcile:${provider.id || provider.reference}`,
-          payload: { source: 'reconciliation', provider },
-          amountCents: provider.amount,
-          currency: provider.currency
+          providerEventId,
+          payload: { source: 'reconciliation', provider: payment.provider },
+          amountCents: providerAmount,
+          currency: providerCurrency
         });
       }
     }

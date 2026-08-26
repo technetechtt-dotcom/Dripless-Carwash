@@ -426,6 +426,7 @@ jobs:
           npm test -- src/evidence/s3-integration.test.ts src/evidence/storage.test.ts
 
   secret-scan:
+    name: secret-scan
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -441,6 +442,7 @@ jobs:
           extra_args: --only-verified
 
   dependency-scan:
+    name: dependency-scan
     runs-on: ubuntu-latest
     steps:
       - name: Checkout

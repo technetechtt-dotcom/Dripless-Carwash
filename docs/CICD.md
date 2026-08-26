@@ -5,13 +5,20 @@
 - Status check: `backend-check`
 - Status checks: `app-checks` for Customer, Driver, and Ops
 - Status checks: `golden-path`, `e2e-cross-platform`, `backup-restore-drill`, `evidence-s3`
+- Status checks: `secret-scan`, `dependency-scan`
 - Status checks: `codeql`, `security-audit (backend-api|Customer|Driver|Ops)`, `container-scan`, and `repository-scan`
 - At least one fresh approving review from someone other than the last pusher
 - Resolved review conversations
 - No force-push or branch deletion
 - Enforcement for administrators
 
-The `main` branch protection rule is configured through the GitHub API. Keep the exact required check names aligned with `.github/workflows` when renaming jobs.
+The `main` branch protection rule is configured through the GitHub API. Re-apply with:
+
+```bash
+bash scripts/apply-branch-protection.sh technetechtt-dotcom/Dripless-Carwash
+```
+
+Keep the exact required check names aligned with `.github/workflows` when renaming jobs.
 
 ## Supply-chain security
 

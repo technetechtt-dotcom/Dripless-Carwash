@@ -285,66 +285,142 @@ export const DashboardPage = ({ tabOverride }: DashboardPageProps) => {
     showResolvedIncidents
   ]);
 
+  const refreshLocations = useCallback(async () => {
+    if (!admin || !canViewDrivers) return;
+    try {
+      const rows = await trackingApi.listDriverLocations();
+      setDriverLocations(rows);
+      setLastSyncedAt(new Date().toISOString());
+    } catch {
+      /* keep last known locations */
+    }
+  }, [admin, canViewDrivers]);
+
+  const refreshBookings = useCallback(async () => {
+    if (!admin || !canViewBookings) return;
+    try {
+      const [bookingsData, summaryData] = await Promise.all([
+        adminApi.listBookings(),
+        adminApi.getDashboardSummary()
+      ]);
+      setBookings(bookingsData);
+      setSummary(summaryData);
+      setLastSyncedAt(new Date().toISOString());
+    } catch {
+      /* keep last known bookings */
+    }
+  }, [admin, canViewBookings]);
+
+  const refreshIncidents = useCallback(async () => {
+    if (!admin || !canViewIncidents) return;
+    try {
+      const incidentsData = await adminApi.listIncidents(showResolvedIncidents);
+      setIncidents(incidentsData);
+      setLastSyncedAt(new Date().toISOString());
+    } catch {
+      /* keep last known incidents */
+    }
+  }, [admin, canViewIncidents, showResolvedIncidents]);
+
+  const refreshNotifications = useCallback(async () => {
+    if (!admin) return;
+    try {
+      const notificationsData = await notificationApi.listNotifications('ops_admin', admin.id);
+      setNotifications(notificationsData);
+      setLastSyncedAt(new Date().toISOString());
+    } catch {
+      /* keep last known notifications */
+    }
+  }, [admin]);
+
+  const refreshDrivers = useCallback(async () => {
+    if (!admin || !canViewDrivers) return;
+    try {
+      const [driversData, locations] = await Promise.all([
+        adminApi.listDrivers(),
+        trackingApi.listDriverLocations()
+      ]);
+      setDrivers(driversData);
+      setDriverLocations(locations);
+      setLastSyncedAt(new Date().toISOString());
+    } catch {
+      /* keep last known drivers */
+    }
+  }, [admin, canViewDrivers]);
+
   useEffect(() => {
     void loadDashboard();
   }, [loadDashboard]);
 
-  // Realtime primary; debounce coalesces high-frequency driver.location into one refresh.
+  // Realtime primary: targeted section refreshes instead of full multi-GET reloads.
   useEffect(() => {
     if (!admin) return;
     let debounceTimer: number | undefined;
-    let pendingFull = false;
-    let pendingLocationsOnly = false;
+    const pending = new Set<
+      'locations' | 'bookings' | 'incidents' | 'notifications' | 'drivers' | 'full'
+    >();
 
     const flush = () => {
       debounceTimer = undefined;
-      if (pendingFull) {
-        pendingFull = false;
-        pendingLocationsOnly = false;
+      if (pending.has('full')) {
+        pending.clear();
         void loadDashboard();
         return;
       }
-      if (pendingLocationsOnly) {
-        pendingLocationsOnly = false;
-        if (!canViewDrivers) return;
-        void trackingApi
-          .listDriverLocations()
-          .then((rows) => {
-            setDriverLocations(rows);
-            setLastSyncedAt(new Date().toISOString());
-          })
-          .catch(() => {
-            /* keep last known locations on transient SSE-driven refresh failure */
-          });
-      }
+      const tasks: Array<Promise<void>> = [];
+      if (pending.has('bookings')) tasks.push(refreshBookings());
+      if (pending.has('incidents')) tasks.push(refreshIncidents());
+      if (pending.has('notifications')) tasks.push(refreshNotifications());
+      if (pending.has('drivers')) tasks.push(refreshDrivers());
+      else if (pending.has('locations')) tasks.push(refreshLocations());
+      pending.clear();
+      void Promise.all(tasks);
     };
 
-    const schedule = (full: boolean) => {
-      if (full) pendingFull = true;
-      else pendingLocationsOnly = true;
+    const schedule = (
+      section: 'locations' | 'bookings' | 'incidents' | 'notifications' | 'drivers' | 'full'
+    ) => {
+      pending.add(section);
       if (debounceTimer != null) window.clearTimeout(debounceTimer);
-      // GPS ticks coalesce; booking/ops events flush sooner.
-      debounceTimer = window.setTimeout(flush, full ? 800 : 1800);
+      const delayMs = section === 'locations' ? 1800 : 800;
+      debounceTimer = window.setTimeout(flush, delayMs);
     };
 
     const stop = subscribePlatformEvents((event) => {
-      if (
-        isBookingLifecycleEvent(event.type) ||
-        event.type === 'ops.incident' ||
-        event.type === 'notification.created'
-      ) {
-        schedule(true);
+      if (event.type === 'driver.location') {
+        schedule('locations');
         return;
       }
-      if (event.type === 'driver.location') {
-        schedule(false);
+      if (isBookingLifecycleEvent(event.type) || event.type === 'payment.status') {
+        schedule('bookings');
+        return;
+      }
+      if (event.type === 'ops.incident') {
+        schedule('incidents');
+        return;
+      }
+      if (event.type === 'notification.created') {
+        schedule('notifications');
+        return;
+      }
+      if (event.type === 'booking.message') {
+        // Messages show in booking detail; refresh bookings lightly for unread indicators.
+        schedule('bookings');
       }
     });
     return () => {
       stop();
       if (debounceTimer != null) window.clearTimeout(debounceTimer);
     };
-  }, [admin, canViewDrivers, loadDashboard]);
+  }, [
+    admin,
+    loadDashboard,
+    refreshBookings,
+    refreshDrivers,
+    refreshIncidents,
+    refreshLocations,
+    refreshNotifications
+  ]);
 
   useEffect(() => {
     if (!isLiveMode) return;

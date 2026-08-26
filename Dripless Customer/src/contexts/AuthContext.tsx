@@ -7,6 +7,7 @@ import React, {
 } from 'react';
 import { accountApi, authApi } from '@shared/api';
 import { notify } from '../utils/notify';
+import { registerSessionDevice } from '../utils/pushDevice';
 import type { CustomerProfile } from '@shared/types';
 
 export type User = CustomerProfile;
@@ -33,7 +34,10 @@ export const AuthProvider = ({ children }: {children: ReactNode;}) => {
 
   useEffect(() => {
     const sessionUser = authApi.getCurrentCustomerProfile();
-    if (sessionUser) setUser(sessionUser);
+    if (sessionUser) {
+      setUser(sessionUser);
+      void registerSessionDevice();
+    }
     setIsLoading(false);
   }, []);
 
@@ -42,6 +46,7 @@ export const AuthProvider = ({ children }: {children: ReactNode;}) => {
     try {
       const profile = await authApi.loginCustomer(email, password);
       setUser(profile);
+      void registerSessionDevice();
       notify.success('Welcome back!');
     } catch (error) {
       notify.error('Invalid credentials');
@@ -56,6 +61,7 @@ export const AuthProvider = ({ children }: {children: ReactNode;}) => {
     try {
       const profile = await authApi.signupCustomer(name, email, password);
       setUser(profile);
+      void registerSessionDevice();
       notify.success('Account created successfully!');
     } catch (error) {
       notify.error(

@@ -16,6 +16,8 @@ npm test -- src/evidence/s3-integration.test.ts
 
 Without credentials the suite is skipped (exit 0). Unit validation still runs in `storage.test.ts`.
 
+Production bucket provisioning: `docs/EVIDENCE_PRODUCTION.md`.
+
 ## Manual staging drill
 
 1. Set staging `EVIDENCE_STORAGE_PROVIDER=s3` with a **private** bucket (Block Public Access on).

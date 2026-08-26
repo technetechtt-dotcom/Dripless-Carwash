@@ -6,6 +6,7 @@ import { StatusStepper } from './StatusStepper';
 import { GlassCard } from './ui/GlassCard';
 import { GlassButton } from './ui/GlassButton';
 import { ChatDrawer } from './ChatDrawer';
+import { EvidenceCapture } from './EvidenceCapture';
 import { useDriverBookings } from '../contexts/DriverBookingContext';
 import { buildNavigationUrl } from '@shared/maps';
 import { formatZar } from '@shared/currency';
@@ -172,6 +173,10 @@ export function ActiveJobCard({ job, onStatusUpdate }: ActiveJobCardProps) {
               </div>
             }
           </div>
+
+          {(job.status === 'ARRIVED' || job.status === 'IN_PROGRESS') && job.type === 'WASH' ? (
+            <EvidenceCapture bookingId={job.id} />
+          ) : null}
 
           {/* Actions */}
           <div className="grid grid-cols-4 gap-3 pt-2">

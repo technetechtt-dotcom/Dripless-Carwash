@@ -12,11 +12,13 @@ import { PageContainer } from '../components/ui/PageContainer';
 import { specialsApi } from '@shared/api';
 import type { OpsSpecial } from '@shared/types';
 import { useToast } from '../contexts/ToastContext';
+import { NotificationsPage } from './NotificationsPage';
 export function HomePage() {
   const { driver } = useDriverAuth();
   const [liveSpecials, setLiveSpecials] = useState<OpsSpecial[]>([]);
   const [redeemCode, setRedeemCode] = useState('');
   const [redeemFeedback, setRedeemFeedback] = useState('');
+  const [showNotifications, setShowNotifications] = useState(false);
   const { showToast } = useToast();
   const {
     isOnline,
@@ -70,14 +72,11 @@ export function HomePage() {
     }
   };
   const showNotificationSummary = () => {
-    if (liveSpecials.length > 0) {
-      setRedeemFeedback(
-        `You have ${liveSpecials.length} active special${liveSpecials.length > 1 ? 's' : ''} from Ops.`
-      );
-      return;
-    }
-    setRedeemFeedback('No new alerts right now.');
+    setShowNotifications(true);
   };
+  if (showNotifications) {
+    return <NotificationsPage onBack={() => setShowNotifications(false)} />;
+  }
   return (
     <PageContainer withOrbs>
       {/* Header */}

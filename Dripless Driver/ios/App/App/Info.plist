@@ -53,6 +53,16 @@
 	</array>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>Dripless Driver uses your location to receive nearby jobs, navigate, and share live trip status.</string>
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>Dripless Driver needs background location so customers and ops can track your trip while the phone is locked.</string>
+	<key>NSLocationAlwaysUsageDescription</key>
+	<string>Dripless Driver needs background location so customers and ops can track your trip while the phone is locked.</string>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>location</string>
+		<string>fetch</string>
+		<string>remote-notification</string>
+	</array>
 	<key>NSCameraUsageDescription</key>
 	<string>Dripless Driver uses your camera for profile and document verification uploads.</string>
 	<key>NSPhotoLibraryUsageDescription</key>

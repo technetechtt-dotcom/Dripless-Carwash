@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import {
   ArrowLeft,
@@ -16,14 +16,32 @@ import { PageContainer } from '../components/ui/PageContainer';
 import { GlassCard } from '../components/ui/GlassCard';
 import { GlassButton } from '../components/ui/GlassButton';
 import { useTheme } from '../contexts/ThemeContext';
+import { notificationApi } from '@shared/api';
+import { useToast } from '../contexts/ToastContext';
 interface SettingsPageProps {
   onBack: () => void;
 }
 export function SettingsPage({ onBack }: SettingsPageProps) {
   const { logout } = useDriverAuth();
   const { isDarkMode, toggleTheme } = useTheme();
+  const { showToast } = useToast();
   const [notifications, setNotifications] = useState(true);
   const [sound, setSound] = useState(true);
+
+  useEffect(() => {
+    void notificationApi
+      .preferences()
+      .then((prefs) => setNotifications(prefs.pushEnabled))
+      .catch(() => undefined);
+  }, []);
+
+  const setPushEnabled = (value: boolean) => {
+    setNotifications(value);
+    void notificationApi.updatePreferences({ pushEnabled: value }).catch((error) => {
+      setNotifications(!value);
+      showToast(error instanceof Error ? error.message : 'Could not save notification preference', 'error');
+    });
+  };
   const Toggle = ({
     checked,
     onChange
@@ -71,7 +89,7 @@ export function SettingsPage({ onBack }: SettingsPageProps) {
                   Push Notifications
                 </span>
               </div>
-              <Toggle checked={notifications} onChange={setNotifications} />
+              <Toggle checked={notifications} onChange={setPushEnabled} />
             </div>
             <div className="p-4 flex items-center justify-between border-b border-slate-100 dark:border-slate-700/50">
               <div className="flex items-center space-x-3">

@@ -24,6 +24,11 @@ import { interpolateGeoPoint, textToGeoPoint } from '@shared/maps';
 import { Booking, Job, JobStatus, PerformanceStats, Message } from '../types';
 import { normaliseGpsSample } from '../utils/gps';
 import { startDriverLocationWatch } from '../utils/nativeLocation';
+import {
+  enqueueLocation,
+  flushEvidenceQueue,
+  flushLocationQueue
+} from '../utils/offlineQueue';
 import { useDriverAuth } from './DriverAuthContext';
 import { useToast } from './ToastContext';
 import type { BookingContract } from '@shared/types';
@@ -163,23 +168,58 @@ export const DriverBookingProvider: React.FC<{
       return;
     }
 
+    let lastPublishedAt = 0;
+    let lastLat: number | null = null;
+    let lastLng: number | null = null;
+    const MIN_PUBLISH_MS = 4_000;
+    const MIN_MOVE_M = 8;
+
     const publishPoint = async (
       lat: number,
       lng: number,
       speedKph?: number | null,
       heading?: number | null,
       accuracyM?: number | null,
-      recordedAt?: string
+      recordedAt?: string,
+      opts?: { force?: boolean; fromQueue?: boolean }
     ) => {
-      await trackingApi.updateDriverLocation({
-        driverId: driver.id,
-        lat,
-        lng,
-        speedKph: speedKph ?? null,
-        heading: heading ?? null,
-        accuracyM: accuracyM ?? null,
-        recordedAt
-      });
+      const now = Date.now();
+      if (!opts?.force && !opts?.fromQueue) {
+        const tooSoon = now - lastPublishedAt < MIN_PUBLISH_MS;
+        const moved =
+          lastLat == null ||
+          lastLng == null ||
+          Math.hypot(lat - lastLat, lng - lastLng) * 111_320 > MIN_MOVE_M;
+        if (tooSoon && !moved) return;
+      }
+      try {
+        await trackingApi.updateDriverLocation({
+          driverId: driver.id,
+          lat,
+          lng,
+          speedKph: speedKph ?? null,
+          heading: heading ?? null,
+          accuracyM: accuracyM ?? null,
+          recordedAt
+        });
+        lastPublishedAt = now;
+        lastLat = lat;
+        lastLng = lng;
+      } catch {
+        if (!opts?.fromQueue) {
+          enqueueLocation({
+            driverId: driver.id,
+            lat,
+            lng,
+            speedKph: speedKph ?? null,
+            heading: heading ?? null,
+            accuracyM: accuracyM ?? null,
+            recordedAt: recordedAt || new Date().toISOString()
+          });
+        } else {
+          throw new Error('queued location flush failed');
+        }
+      }
     };
 
     const emitSimulatedLocation = async () => {
@@ -203,18 +243,24 @@ export const DriverBookingProvider: React.FC<{
         await publishPoint(
           point.lat,
           point.lng,
-          activeJob.status === 'IN_PROGRESS' ? 8 : 32
+          activeJob.status === 'IN_PROGRESS' ? 8 : 32,
+          null,
+          null,
+          undefined,
+          { force: true }
         );
         return;
       }
 
       const base = textToGeoPoint(driver.id, 499);
-      await publishPoint(base.lat, base.lng, 0);
+      await publishPoint(base.lat, base.lng, 0, null, null, undefined, { force: true });
     };
 
     let intervalId: number | null = null;
+    let flushIntervalId: number | null = null;
     let stopWatch: (() => void) | null = null;
     let cancelled = false;
+    let consecutiveGpsErrors = 0;
 
     const startFallbackInterval = () => {
       void emitSimulatedLocation();
@@ -233,8 +279,41 @@ export const DriverBookingProvider: React.FC<{
       showToast(message, 'error');
     };
 
+    const flushQueues = async () => {
+      await flushLocationQueue(async (row) => {
+        await publishPoint(
+          row.lat,
+          row.lng,
+          row.speedKph,
+          row.heading,
+          row.accuracyM,
+          row.recordedAt,
+          { fromQueue: true, force: true }
+        );
+      });
+      await flushEvidenceQueue(async (row) => {
+        await bookingProofApi.uploadEvidence(row.bookingId, {
+          kind: row.kind,
+          dataUrl: row.dataUrl,
+          note: row.note,
+          offlineQueued: true
+        });
+      });
+    };
+
+    void flushQueues().catch(() => undefined);
+    flushIntervalId = window.setInterval(() => {
+      void flushQueues().catch(() => undefined);
+    }, 15_000);
+
+    const onOnline = () => {
+      void flushQueues().catch(() => undefined);
+    };
+    window.addEventListener('online', onOnline);
+
     void startDriverLocationWatch({
       onSample: (sample) => {
+        consecutiveGpsErrors = 0;
         void publishPoint(
           sample.lat,
           sample.lng,
@@ -246,6 +325,12 @@ export const DriverBookingProvider: React.FC<{
       },
       onError: (message) => {
         if (cancelled) return;
+        consecutiveGpsErrors += 1;
+        // Tolerate brief GPS gaps (tunnels / lock-screen warm-up); only drop after repeated failures.
+        if (consecutiveGpsErrors < 3) {
+          showToast(`${message}. Retrying GPS…`, 'info');
+          return;
+        }
         goOffline(message.includes('offline') ? message : `${message}. You are offline.`);
       }
     })
@@ -268,8 +353,12 @@ export const DriverBookingProvider: React.FC<{
     return () => {
       cancelled = true;
       stopWatch?.();
+      window.removeEventListener('online', onOnline);
       if (intervalId !== null) {
         window.clearInterval(intervalId);
+      }
+      if (flushIntervalId !== null) {
+        window.clearInterval(flushIntervalId);
       }
     };
   }, [activeJob, driver?.id, isOnline]);
