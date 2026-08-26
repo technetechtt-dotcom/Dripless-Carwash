@@ -11,15 +11,15 @@ FROM node:22-alpine AS runtime
 WORKDIR /app
 ENV NODE_ENV=production
 
-# curl for healthcheck in production compose files
-RUN apk add --no-cache python3 py3-pip curl && \
+# curl for healthcheck in production compose files; keep OpenSSL patched for Trivy.
+RUN apk update && apk upgrade --no-cache && \
+    apk add --no-cache python3 py3-pip curl openssl && \
     pip3 install --no-cache-dir reportlab --break-system-packages 2>/dev/null || \
     apk add --no-cache py3-reportlab && \
     ln -sf /usr/bin/python3 /usr/local/bin/python && \
     addgroup -S dripless && adduser -S dripless -G dripless && \
     mkdir -p /app/data && chown -R dripless:dripless /app && \
-    rm -rf /usr/local/lib/node_modules/npm /usr/local/bin/npm /usr/local/bin/npx /usr/local/bin/corepack
-
+    rm -rf /usr/local/lib/node_modules/npm /usr/local/bin/npm /usr/local/bin/npx /usr/local/bin/corepack /var/cache/apk/*
 COPY --from=build --chown=dripless:dripless /app/node_modules ./node_modules
 COPY --from=build --chown=dripless:dripless /app/dist ./dist
 COPY --from=build --chown=dripless:dripless /app/prisma ./prisma

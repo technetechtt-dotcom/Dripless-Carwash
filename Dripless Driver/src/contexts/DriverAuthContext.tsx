@@ -6,6 +6,7 @@ import React, {
   type ReactNode
 } from 'react';
 import { authApi } from '@shared/api';
+import { registerSessionDevice } from '../utils/pushDevice';
 import { Driver } from '../types';
 interface DriverAuthContextType {
   driver: Driver | null;
@@ -37,7 +38,10 @@ export const DriverAuthProvider: React.FC<{
   const [isLoading, setIsLoading] = useState(true);
   useEffect(() => {
     const activeDriver = authApi.getCurrentDriverProfile();
-    if (activeDriver) setDriver(activeDriver);
+    if (activeDriver) {
+      setDriver(activeDriver);
+      void registerSessionDevice();
+    }
     setIsLoading(false);
   }, []);
   const login = async (email: string, password: string) => {
@@ -45,6 +49,7 @@ export const DriverAuthProvider: React.FC<{
     try {
       const profile = await authApi.loginDriver(email, password);
       setDriver(profile);
+      void registerSessionDevice();
     } finally {
       setIsLoading(false);
     }
@@ -59,6 +64,7 @@ export const DriverAuthProvider: React.FC<{
     try {
       const profile = await authApi.signupDriver(name, email, password, vehicle);
       setDriver(profile);
+      void registerSessionDevice();
     } finally {
       setIsLoading(false);
     }

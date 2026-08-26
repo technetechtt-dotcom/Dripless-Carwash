@@ -1,5 +1,6 @@
 import { Capacitor } from '@capacitor/core';
 import { Geolocation, type PermissionStatus, type Position } from '@capacitor/geolocation';
+import { BackgroundLocation } from '../plugins/backgroundLocation';
 import { normaliseGpsSample, type GpsSample } from './gps';
 
 export type LocationWatchHandle = {
@@ -30,21 +31,59 @@ async function ensureLocationPermission(): Promise<PermissionStatus> {
 }
 
 /**
- * Prefer Capacitor Geolocation on native Android/iOS so OS permission dialogs
- * and accuracy settings work. Falls back to browser geolocation on web.
- * Screen-off tracking still requires a foreground-service / background plugin.
+ * Prefer Capacitor Geolocation on native Android/iOS.
+ * On Android, also starts a location foreground service so tracking continues
+ * while the app is backgrounded or the screen is locked.
  */
 export async function startDriverLocationWatch(input: {
   onSample: (sample: GpsSample) => void;
   onError: (message: string) => void;
 }): Promise<LocationWatchHandle> {
   if (Capacitor.isNativePlatform()) {
+    const cleanups: Array<() => void> = [];
     try {
       const permissions = await ensureLocationPermission();
       if (permissions.location !== 'granted' && permissions.coarseLocation !== 'granted') {
         input.onError('Location permission was denied');
         return { stop: () => undefined };
       }
+
+      if (Capacitor.getPlatform() === 'android') {
+        try {
+          await BackgroundLocation.start({
+            title: 'Dripless Driver online',
+            body: 'Sharing live location while you are on shift',
+            intervalMs: 5_000
+          });
+          const handle = await BackgroundLocation.addListener('location', (raw) => {
+            try {
+              input.onSample(
+                normaliseGpsSample({
+                  coords: {
+                    latitude: raw.lat,
+                    longitude: raw.lng,
+                    accuracy: raw.accuracyM ?? 999,
+                    altitude: null,
+                    altitudeAccuracy: null,
+                    heading: raw.heading ?? null,
+                    speed: raw.speed ?? null
+                  } as GeolocationCoordinates,
+                  timestamp: raw.timestamp ?? Date.now()
+                })
+              );
+            } catch (cause) {
+              input.onError(cause instanceof Error ? cause.message : 'GPS sample was rejected');
+            }
+          });
+          cleanups.push(() => {
+            void handle.remove();
+            void BackgroundLocation.stop();
+          });
+        } catch {
+          // Fall through to Capacitor watch if the FG service cannot start.
+        }
+      }
+
       const watchId = await Geolocation.watchPosition(
         {
           enableHighAccuracy: true,
@@ -53,7 +92,10 @@ export async function startDriverLocationWatch(input: {
         },
         (position, err) => {
           if (err || !position) {
-            input.onError(err?.message || 'GPS permission or signal was lost');
+            // Transient GPS blips should not immediately force offline when FG service is running.
+            if (cleanups.length === 0) {
+              input.onError(err?.message || 'GPS permission or signal was lost');
+            }
             return;
           }
           try {
@@ -63,9 +105,20 @@ export async function startDriverLocationWatch(input: {
           }
         }
       );
+      cleanups.push(() => {
+        void Geolocation.clearWatch({ id: watchId });
+      });
+
       return {
         stop: () => {
-          void Geolocation.clearWatch({ id: watchId });
+          while (cleanups.length) {
+            const fn = cleanups.pop();
+            try {
+              fn?.();
+            } catch {
+              /* ignore */
+            }
+          }
         }
       };
     } catch (cause) {

@@ -7,7 +7,7 @@ import { validate } from '../middleware/validate.js';
 import { HttpError } from '../middleware/error.js';
 import { enqueue } from '../lib/queue.js';
 import { verifyPaystackTransaction } from './paystack.js';
-import { ozowAmountMatches, ozowStatusIsPaid } from './ozow.js';
+import { ozowAmountMatches, ozowStatusIsPaid, verifyOzowTransactionByReference } from './ozow.js';
 import { applyPayoutEvent } from '../payouts/routes.js';
 import {
   applyChargeback,
@@ -355,6 +355,62 @@ paymentsRouter.post('/webhooks/ozow', async (req, res, next) => {
     });
     // Ozow expects a simple 200 acknowledgement for notify callbacks.
     res.status(200).type('text/plain').send(duplicate ? 'OK' : 'OK');
+  } catch (error) {
+    next(error);
+  }
+});
+
+/** Recover from a missed/late Ozow notify by querying Ozow and applying success. */
+paymentsRouter.post('/:paymentId/sync', authRequired, async (req, res, next) => {
+  try {
+    const payment = await prisma.payment.findUnique({
+      where: { id: String(req.params.paymentId) }
+    });
+    if (!payment) throw new HttpError(404, 'Payment not found');
+    if (req.auth!.role === 'customer') {
+      const user = await prisma.user.findFirst({
+        where: {
+          customerProfile: { id: req.auth!.profileId }
+        }
+      });
+      if (!user || payment.userId !== user.id) throw new HttpError(403, 'Forbidden');
+    } else if (req.auth!.role !== 'ops_admin') {
+      throw new HttpError(403, 'Forbidden');
+    }
+    if (payment.status === 'PAID') {
+      return res.json(mapPaymentDto(payment));
+    }
+    if (payment.provider !== 'ozow') {
+      throw new HttpError(400, 'Sync is only supported for Ozow payments');
+    }
+    const remote = await verifyOzowTransactionByReference(payment.externalRef || payment.id);
+    if (!remote) {
+      return res.status(202).json({ ...mapPaymentDto(payment), sync: 'pending_provider' });
+    }
+    const amount = remote.Amount ?? '';
+    const currency = remote.CurrencyCode || 'ZAR';
+    if (!ozowAmountMatches(payment.amountZar, amount, currency)) {
+      throw new HttpError(400, 'Amount mismatch');
+    }
+    const status = String(remote.Status || '');
+    const eventId = String(remote.TransactionId || `sync:${payment.id}`);
+    if (ozowStatusIsPaid(status)) {
+      const updated = await applyPaymentSuccess({
+        paymentId: payment.id,
+        providerEventId: eventId,
+        payload: { source: 'customer_sync', remote },
+        amountCents: Math.round(Number(amount) * 100),
+        currency
+      });
+      return res.json(mapPaymentDto(updated));
+    }
+    const updated = await applyPaymentFailed({
+      paymentId: payment.id,
+      providerEventId: eventId,
+      payload: { source: 'customer_sync', remote },
+      reason: status || 'ozow_sync_failed'
+    });
+    res.json(mapPaymentDto(updated));
   } catch (error) {
     next(error);
   }

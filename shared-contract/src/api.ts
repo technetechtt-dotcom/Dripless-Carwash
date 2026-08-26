@@ -2533,7 +2533,13 @@ export const notificationApi = {
   markAllRead: () => requestApi<void>('/notifications/read-all', { method: 'POST', token: getBearerToken() }),
   remove: (notificationId: string) => requestApi<void>(`/notifications/${encodeURIComponent(notificationId)}`, { method: 'DELETE', token: getBearerToken() }),
   preferences: () => requestApi<{ pushEnabled: boolean; emailEnabled: boolean; smsEnabled: boolean; marketing: boolean }>('/notifications/preferences', { token: getBearerToken() }),
-  updatePreferences: (body: Record<string, boolean>) => requestApi<Record<string, unknown>>('/notifications/preferences', { method: 'PATCH', token: getBearerToken(), body })
+  updatePreferences: (body: Record<string, boolean>) => requestApi<Record<string, unknown>>('/notifications/preferences', { method: 'PATCH', token: getBearerToken(), body }),
+  registerDevice: (token: string, platform: 'android' | 'ios' | 'web') =>
+    requestApi<{ id: string; platform: string }>('/notifications/devices', {
+      method: 'POST',
+      token: getBearerToken(),
+      body: { token, platform }
+    })
 };
 
 export const specialsApi = {
@@ -2632,6 +2638,22 @@ export const paymentsApi = {
       externalRef: string | null;
       createdAt: string;
     }>>('/payments', { token: getBearerToken() });
+  },
+  async sync(paymentId: string) {
+    return requestApi<{
+      paymentId: string;
+      bookingId: string | null;
+      provider: string;
+      status: string;
+      amountZar: number;
+      currency: string;
+      externalRef: string | null;
+      createdAt: string;
+      sync?: string;
+    }>(`/payments/${encodeURIComponent(paymentId)}/sync`, {
+      method: 'POST',
+      token: getBearerToken()
+    });
   }
 };
 
@@ -2910,7 +2932,21 @@ export function subscribePlatformEvents(
           },
           signal: controller.signal
         });
-        if (!response.ok || !response.body) throw new Error(`Event stream failed (${response.status})`);
+        if (!response.ok || !response.body) {
+          const retryAfterHeader = response.headers.get('Retry-After');
+          const retryAfterSec = retryAfterHeader ? Number(retryAfterHeader) : NaN;
+          // 429 reconnect storms amplify rate limits; wait out the window.
+          if (response.status === 429) {
+            const waitMs = Number.isFinite(retryAfterSec)
+              ? Math.max(1_000, retryAfterSec * 1_000)
+              : Math.max(backoff, 15_000);
+            onState?.('reconnecting');
+            await delay(waitMs);
+            backoff = Math.min(60_000, Math.max(backoff * 2, 15_000));
+            continue;
+          }
+          throw new Error(`Event stream failed (${response.status})`);
+        }
         onState?.('connected');
         backoff = 1000;
         const reader = response.body.getReader();

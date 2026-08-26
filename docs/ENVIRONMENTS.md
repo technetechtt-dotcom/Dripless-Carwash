@@ -7,7 +7,7 @@ Never share these between staging and production:
 | PostgreSQL | `STAGING_DATABASE_URL` | `DATABASE_URL` |
 | Redis | `STAGING_REDIS_URL` | `REDIS_URL` |
 | Object storage | `STAGING_S3_*` | `S3_*` |
-| Paystack | **test** keys only (`sk_test_…`) | **live** keys only after sandbox sign-off |
+| Paystack / Ozow | **test** keys only | **live** keys only after sandbox sign-off |
 | Secrets | `STAGING_MFA_ENC_KEY`, etc. | Production keys (different values) |
 | Domains | staging-*.dripless.co.za | customer/driver/ops.dripless.co.za |
 
@@ -17,7 +17,14 @@ Compose files:
 - Staging: `docker-compose.staging.yml` + `backend-api/.env.staging.example`
 - Production: `docker-compose.production.yml` + `backend-api/.env.production.example`
 
-Production boot refuses unsafe config via `assertProductionConfiguration()` (Redis required, S3 evidence, MFA for Ops, Paystack provider, separate API/worker roles, no localhost CORS).
+Production boot refuses unsafe config via `assertProductionConfiguration()` (Redis required, S3 evidence, MFA for Ops, Paystack **or Ozow** provider, separate API/worker roles, no localhost CORS).
+
+See also:
+
+- `docs/EVIDENCE_PRODUCTION.md`
+- `docs/OZOW_SANDBOX_CHECKLIST.md`
+- `docs/NOTIFICATIONS_FIELD_TEST.md`
+- `docs/ANDROID_FIELD_TEST.md`
 
 ## Monitoring
 

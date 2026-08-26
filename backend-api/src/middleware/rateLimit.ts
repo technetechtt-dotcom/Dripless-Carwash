@@ -1,4 +1,6 @@
 import rateLimit from 'express-rate-limit';
+import type { Request } from 'express';
+import { env } from '../config/env.js';
 import { getRedis } from '../lib/redis.js';
 
 function createRedisStore(prefix: string, windowMs: number) {
@@ -22,9 +24,20 @@ function createRedisStore(prefix: string, windowMs: number) {
   };
 }
 
+/** Long-lived SSE and probes must not consume the shared API budget. */
+function skipInfrastructurePaths(req: Request) {
+  const path = req.path;
+  return (
+    path === '/health' ||
+    path === '/ready' ||
+    path === '/events/stream' ||
+    req.method === 'OPTIONS'
+  );
+}
+
 export const authRateLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 30,
+  max: env.isProduction ? 30 : 200,
   standardHeaders: true,
   legacyHeaders: false,
   store: createRedisStore('auth', 15 * 60 * 1000),
@@ -32,12 +45,18 @@ export const authRateLimiter = rateLimit({
   message: { message: 'Too many authentication attempts. Try again later.' }
 });
 
+// Ops dashboard alone can fire ~10 parallel GETs + SSE reconnects + Customer/Driver tabs.
+// Keep production protective; loosen local/demo so one browser does not trip 429 storms.
+const apiWindowMs = 60 * 1000;
+const apiMax = env.isProduction ? 300 : 5_000;
+
 export const apiRateLimiter = rateLimit({
-  windowMs: 60 * 1000,
-  max: 120,
+  windowMs: apiWindowMs,
+  max: apiMax,
   standardHeaders: true,
   legacyHeaders: false,
-  store: createRedisStore('api', 60 * 1000),
+  store: createRedisStore('api', apiWindowMs),
+  skip: skipInfrastructurePaths,
   validate: { xForwardedForHeader: false, singleCount: false },
   message: { message: 'Too many requests. Slow down.' }
 });

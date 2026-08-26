@@ -46,6 +46,19 @@ const PaymentReturn = () => {
             setMessage('Payment verified. Your booking is ready.');
             return;
           }
+          if (payment.status === 'PENDING' || payment.status === 'REQUIRES_ACTION') {
+            try {
+              const synced = await paymentsApi.sync(payment.paymentId);
+              if (synced.status === 'PAID') {
+                localStorage.removeItem('dripless_pending_payment');
+                setState('paid');
+                setMessage('Payment verified. Your booking is ready.');
+                return;
+              }
+            } catch {
+              /* continue polling */
+            }
+          }
           if (['FAILED', 'REFUNDED', 'CANCELLED'].includes(payment.status) || statusHint === 'cancelled' || statusHint === 'error') {
             setState('failed');
             setMessage(`Payment status: ${payment.status.toLowerCase()}.`);
