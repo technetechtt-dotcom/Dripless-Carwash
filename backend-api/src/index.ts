@@ -35,8 +35,21 @@ async function maybeBootstrapFromEnv() {
   console.log(`Bootstrapped ops admin from env: ${email}`);
 }
 
+async function connectDatabase(retries = 5) {
+  for (let attempt = 1; attempt <= retries; attempt++) {
+    try {
+      await prisma.$connect();
+      return;
+    } catch (error) {
+      if (attempt === retries) throw error;
+      await new Promise((resolve) => setTimeout(resolve, attempt * 2000));
+    }
+  }
+}
+
 async function main() {
   assertProductionConfiguration();
+  await connectDatabase();
   await maybeBootstrapFromEnv();
   if (env.PROCESS_ROLE === 'all') {
     registerJobHandlers();

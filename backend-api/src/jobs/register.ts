@@ -16,7 +16,7 @@ const hour = 60 * 60_000;
 const day = 24 * hour;
 
 export async function ensureScheduledJobs() {
-  await Promise.all([
+  const jobs: Array<ReturnType<typeof enqueueUnique>> = [
     ...(env.PAYSTACK_SECRET_KEY
       ? [
           enqueueUnique('payment.reconcile', {}, { runAt: new Date(Date.now() + 60_000) }),
@@ -30,7 +30,10 @@ export async function ensureScheduledJobs() {
     enqueueUnique('location.retention', {}, { runAt: new Date(Date.now() + 6 * 60_000) }),
     enqueueUnique('events.retention', {}, { runAt: new Date(Date.now() + 7 * 60_000) }),
     enqueueUnique('dispatch.offers.expire', {}, { runAt: new Date(Date.now() + 15_000) })
-  ]);
+  ];
+  for (const job of jobs) {
+    await job;
+  }
 }
 
 export function registerJobHandlers() {
