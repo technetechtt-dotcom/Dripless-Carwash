@@ -1,6 +1,6 @@
 import { createHash, randomBytes } from 'node:crypto';
 import { env } from '../config/env.js';
-import { prisma } from '../db/prisma.js';
+import { prisma, withConnectionRetry } from '../db/prisma.js';
 
 export const hashToken = (token: string) =>
   createHash('sha256').update(token).digest('hex');
@@ -33,29 +33,31 @@ export async function issueSessionTokens(
   const mfaVerifiedAt = context?.mfaVerified ? new Date() : null;
   const authMethod = context?.authMethod || 'PASSWORD';
 
-  await prisma.$transaction([
-    prisma.session.create({
-      data: {
-        userId,
-        accessTokenHash,
-        expiresAt: accessExp,
-        ipAddress: context?.ip,
-        userAgent: context?.userAgent?.slice(0, 500),
-        deviceLabel: context?.deviceLabel || context?.userAgent?.slice(0, 120),
-        authMethod,
-        mfaVerifiedAt
-      }
-    }),
-    prisma.refreshToken.create({
-      data: {
-        userId,
-        tokenHash: refreshTokenHash,
-        expiresAt: refreshExp,
-        authMethod,
-        mfaVerifiedAt
-      }
-    })
-  ]);
+  await withConnectionRetry(() =>
+    prisma.$transaction([
+      prisma.session.create({
+        data: {
+          userId,
+          accessTokenHash,
+          expiresAt: accessExp,
+          ipAddress: context?.ip,
+          userAgent: context?.userAgent?.slice(0, 500),
+          deviceLabel: context?.deviceLabel || context?.userAgent?.slice(0, 120),
+          authMethod,
+          mfaVerifiedAt
+        }
+      }),
+      prisma.refreshToken.create({
+        data: {
+          userId,
+          tokenHash: refreshTokenHash,
+          expiresAt: refreshExp,
+          authMethod,
+          mfaVerifiedAt
+        }
+      })
+    ])
+  );
 
   return {
     accessToken,
@@ -97,16 +99,18 @@ export async function rotateRefreshToken(rawRefreshToken: string) {
 
 export async function revokeUserSessions(userId: string) {
   const now = new Date();
-  await prisma.$transaction([
-    prisma.session.updateMany({
-      where: { userId, revokedAt: null },
-      data: { revokedAt: now }
-    }),
-    prisma.refreshToken.updateMany({
-      where: { userId, revokedAt: null },
-      data: { revokedAt: now }
-    })
-  ]);
+  await withConnectionRetry(() =>
+    prisma.$transaction([
+      prisma.session.updateMany({
+        where: { userId, revokedAt: null },
+        data: { revokedAt: now }
+      }),
+      prisma.refreshToken.updateMany({
+        where: { userId, revokedAt: null },
+        data: { revokedAt: now }
+      })
+    ])
+  );
 }
 
 export async function revokeAccessToken(rawAccessToken: string) {

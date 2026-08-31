@@ -1,6 +1,6 @@
 import { createApp } from './app.js';
 import { assertProductionConfiguration, env } from './config/env.js';
-import { prisma } from './db/prisma.js';
+import { prisma, withConnectionRetry } from './db/prisma.js';
 import { hashPassword } from './auth/password.js';
 import { DEFAULT_OPS_PERMISSIONS } from './auth/permissions.js';
 import { ensureScheduledJobs, registerJobHandlers } from './jobs/register.js';
@@ -36,15 +36,7 @@ async function maybeBootstrapFromEnv() {
 }
 
 async function connectDatabase(retries = 5) {
-  for (let attempt = 1; attempt <= retries; attempt++) {
-    try {
-      await prisma.$connect();
-      return;
-    } catch (error) {
-      if (attempt === retries) throw error;
-      await new Promise((resolve) => setTimeout(resolve, attempt * 2000));
-    }
-  }
+  await withConnectionRetry(() => prisma.$connect(), retries);
 }
 
 async function main() {
