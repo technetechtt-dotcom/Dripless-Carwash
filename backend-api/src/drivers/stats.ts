@@ -55,3 +55,34 @@ driverStatsRouter.get('/stats/today', authRequired, roleRequired(['driver']), as
     next(error);
   }
 });
+
+function startOfWeek() {
+  const date = new Date();
+  const day = date.getDay();
+  const diff = day === 0 ? 6 : day - 1;
+  date.setDate(date.getDate() - diff);
+  date.setHours(0, 0, 0, 0);
+  return date;
+}
+
+driverStatsRouter.get('/stats/week', authRequired, roleRequired(['driver']), async (req, res, next) => {
+  try {
+    const driverId = req.auth!.profileId;
+    const weekStart = startOfWeek();
+    const [jobsWeek, earningsWeek] = await Promise.all([
+      prisma.booking.count({
+        where: { driverId, status: 'COMPLETED', updatedAt: { gte: weekStart } }
+      }),
+      prisma.driverEarning.aggregate({
+        where: { driverId, createdAt: { gte: weekStart } },
+        _sum: { netCents: true }
+      })
+    ]);
+    res.json({
+      jobsWeek,
+      earningsWeekZar: fromCents(earningsWeek._sum.netCents ?? 0)
+    });
+  } catch (error) {
+    next(error);
+  }
+});

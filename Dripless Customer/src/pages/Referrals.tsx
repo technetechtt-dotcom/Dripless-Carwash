@@ -1,19 +1,37 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import {
-  ArrowLeftIcon,
-  CopyIcon,
-  Share2Icon,
-  GiftIcon,
-  UsersIcon } from
-'lucide-react';
+import { ArrowLeftIcon, CopyIcon, Share2Icon, GiftIcon, UsersIcon } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { toast } from 'sonner';
 import { useAnalytics } from '../hooks/useAnalytics';
+import { customerAccountApi } from '@shared/api';
+import { formatCurrency } from '../utils/currency';
+
 const Referrals = () => {
   const navigate = useNavigate();
   const { trackEvent } = useAnalytics();
-  const referralCode = 'ALEX2024';
+  const [referralCode, setReferralCode] = useState('');
+  const [invitesCount, setInvitesCount] = useState(0);
+  const [rewardEarned, setRewardEarned] = useState(0);
+
+  useEffect(() => {
+    let cancelled = false;
+    customerAccountApi.referralsSummary().then((summary) => {
+      if (cancelled) return;
+      setReferralCode(summary.referralCode ?? '');
+      setInvitesCount(summary.invitesCount);
+      setRewardEarned(summary.rewardEarnedZar);
+    }).catch(() => {
+      if (!cancelled) {
+        setReferralCode('');
+        setInvitesCount(0);
+        setRewardEarned(0);
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
   const handleCopy = () => {
     navigator.clipboard.writeText(referralCode);
     toast.success('Referral code copied!');
@@ -115,7 +133,7 @@ const Referrals = () => {
               </span>
             </div>
             <p className="text-2xl font-bold text-slate-800 dark:text-white">
-              12
+              {invitesCount}
             </p>
           </div>
           <div className="glass-card p-4">
@@ -124,7 +142,7 @@ const Referrals = () => {
               <span className="text-xs font-bold uppercase">Earned</span>
             </div>
             <p className="text-2xl font-bold text-eco-600 dark:text-eco-400">
-              $40
+              {formatCurrency(rewardEarned)}
             </p>
           </div>
         </div>

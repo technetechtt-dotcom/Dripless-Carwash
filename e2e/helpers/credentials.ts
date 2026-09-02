@@ -7,3 +7,9 @@ export const E2E_DRIVER_EMAIL = process.env.E2E_DRIVER_EMAIL || 'driver@demo.dri
 export const E2E_DRIVER_PASSWORD = process.env.E2E_DRIVER_PASSWORD || 'DemoPass123!';
 export const E2E_OPS_EMAIL = process.env.E2E_OPS_EMAIL || 'ops@demo.dripless.local';
 export const E2E_OPS_PASSWORD = process.env.E2E_OPS_PASSWORD || 'DemoPass123!';
+export const E2E_OPS_DISPATCH_EMAIL =
+  process.env.E2E_OPS_DISPATCH_EMAIL || 'ops.dispatch@demo.dripless.local';
+export const E2E_OPS_SUPPORT_EMAIL =
+  process.env.E2E_OPS_SUPPORT_EMAIL || 'ops.support@demo.dripless.local';
+export const E2E_OPS_COMPLIANCE_EMAIL =
+  process.env.E2E_OPS_COMPLIANCE_EMAIL || 'ops.compliance@demo.dripless.local';

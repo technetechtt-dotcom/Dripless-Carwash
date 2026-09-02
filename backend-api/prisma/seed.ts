@@ -223,6 +223,55 @@ async function main() {
     }
   });
 
+  const rbacOpsUsers = [
+    {
+      email: 'ops.dispatch@demo.dripless.local',
+      id: 'ops_dispatch_001',
+      name: 'Demo Dispatcher',
+      permissions: ['bookings:read', 'bookings:assign', 'bookings:update', 'drivers:read', 'incidents:read']
+    },
+    {
+      email: 'ops.support@demo.dripless.local',
+      id: 'ops_support_001',
+      name: 'Demo Support',
+      permissions: ['bookings:read', 'customers:read', 'incidents:read']
+    },
+    {
+      email: 'ops.compliance@demo.dripless.local',
+      id: 'ops_compliance_001',
+      name: 'Demo Compliance',
+      permissions: ['drivers:read', 'drivers:verify', 'incidents:read']
+    }
+  ] as const;
+
+  for (const opsUser of rbacOpsUsers) {
+    await prisma.user.upsert({
+      where: { email: opsUser.email },
+      update: {
+        opsProfile: {
+          update: {
+            name: opsUser.name,
+            permissions: [...opsUser.permissions]
+          }
+        }
+      },
+      create: {
+        email: opsUser.email,
+        passwordHash: demoPassword,
+        role: 'ops_admin',
+        emailVerifiedAt: new Date(),
+        mustChangePassword: false,
+        opsProfile: {
+          create: {
+            id: opsUser.id,
+            name: opsUser.name,
+            permissions: [...opsUser.permissions]
+          }
+        }
+      }
+    });
+  }
+
   await ensureDemoDriverCompliance('driver_demo_001', 'ops_demo_001');
 
   await prisma.promotion.upsert({
@@ -447,6 +496,9 @@ async function main() {
   console.log('  customer@demo.dripless.local / DemoPass123!');
   console.log('  driver@demo.dripless.local / DemoPass123!');
   console.log('  ops@demo.dripless.local / DemoPass123!');
+  console.log('  ops.dispatch@demo.dripless.local / DemoPass123!');
+  console.log('  ops.support@demo.dripless.local / DemoPass123!');
+  console.log('  ops.compliance@demo.dripless.local / DemoPass123!');
   console.log('  promo: ECO10');
 }
 

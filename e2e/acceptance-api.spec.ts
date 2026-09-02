@@ -16,9 +16,14 @@ test.describe('Customer API acceptance', () => {
       co2KgSaved: number;
       ecoStreakDays: number;
       projectedCo2KgYear: number;
+      ecoPoints: number;
     }>('/impact/summary', 'GET', undefined, token);
     expect(typeof impact.co2KgSaved).toBe('number');
     expect(typeof impact.ecoStreakDays).toBe('number');
+    expect(typeof impact.ecoPoints).toBe('number');
+
+    const trends = await api<{ months: unknown[] }>('/impact/trends', 'GET', undefined, token);
+    expect(Array.isArray(trends.months)).toBeTruthy();
 
     const catalog = await api<Array<{ slug: string }>>('/catalog/services', 'GET', undefined, token);
     expect(Array.isArray(catalog)).toBeTruthy();
@@ -54,9 +59,19 @@ test.describe('Driver API acceptance', () => {
     const stats = await api<{
       jobsToday: number;
       onlineHoursToday: number;
+      earningsTodayZar: number;
     }>('/driver/stats/today', 'GET', undefined, token);
     expect(typeof stats.jobsToday).toBe('number');
     expect(typeof stats.onlineHoursToday).toBe('number');
+    expect(typeof stats.earningsTodayZar).toBe('number');
+
+    const week = await api<{ jobsWeek: number; earningsWeekZar: number }>(
+      '/driver/stats/week',
+      'GET',
+      undefined,
+      token
+    );
+    expect(typeof week.jobsWeek).toBe('number');
 
     const payouts = await api('/payouts/me', 'GET', undefined, token);
     expect(payouts).toBeTruthy();

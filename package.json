@@ -14,7 +14,7 @@
     "check:android": "node \"tools/android-device-check.mjs\"",
     "check:staging": "node \"tools/staging-check.mjs\"",
     "test:e2e": "npx playwright test",
-    "test:e2e:acceptance": "npx playwright test e2e/acceptance-api.spec.ts e2e/staged-wash.spec.ts",
+    "test:e2e:acceptance": "npx playwright test e2e/acceptance-api.spec.ts e2e/customer-acceptance.spec.ts e2e/driver-acceptance.spec.ts e2e/ops-rbac.spec.ts e2e/staged-wash.spec.ts e2e/cross-platform.spec.ts",
     "test:e2e:ui": "npx playwright test --ui",
     "test:golden": "npm --prefix \"backend-api\" test -- src/cross-platform-golden-path.test.ts src/gps-realtime-propagation.test.ts",
     "test:ozow-failures": "npm --prefix \"backend-api\" test -- src/payments/ozow-webhook-failures.test.ts",

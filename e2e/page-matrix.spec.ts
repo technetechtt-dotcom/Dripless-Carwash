@@ -5,7 +5,7 @@ const DRIVER_URL = process.env.DRIVER_URL || 'http://localhost:5174';
 const OPS_URL = process.env.OPS_URL || 'http://localhost:5175';
 const HAS_UI = Boolean(process.env.E2E_UI === '1' || process.env.CI);
 
-const customerRoutes = [
+const customerPublicRoutes = [
   '/login',
   '/signup',
   '/forgot-password',
@@ -16,22 +16,47 @@ const customerRoutes = [
   '/help-support'
 ];
 
+const customerProtectedRoutes = [
+  '/home',
+  '/my-cars',
+  '/saved-addresses',
+  '/wallet-management',
+  '/service-history',
+  '/receipts',
+  '/referrals',
+  '/notifications',
+  '/profile',
+  '/security',
+  '/payment-return',
+  '/rewards'
+];
+
 const driverRoutes = ['/login', '/signup'];
+const opsRoutes = ['/login'];
 
 test.describe('Customer page matrix', () => {
   test.skip(!HAS_UI, 'Set E2E_UI=1 with running apps to execute UI matrix');
 
-  for (const route of customerRoutes) {
-    test(`route loads ${route}`, async ({ page }) => {
+  for (const route of customerPublicRoutes) {
+    test(`public route loads ${route}`, async ({ page }) => {
       const response = await page.goto(`${CUSTOMER_URL}${route}`);
       expect(response?.status()).toBeLessThan(500);
       await expect(page.locator('body')).toBeVisible();
     });
   }
 
-  test('invalid booking route shows app shell without crash', async ({ page }) => {
-    const response = await page.goto(`${CUSTOMER_URL}/booking/not-a-real-service`);
-    expect(response?.status()).toBeLessThan(500);
+  for (const route of customerProtectedRoutes) {
+    test(`protected route redirects or loads ${route}`, async ({ page }) => {
+      const response = await page.goto(`${CUSTOMER_URL}${route}`);
+      expect(response?.status()).toBeLessThan(500);
+    });
+  }
+
+  test('excluded taxi/delivery booking routes redirect safely', async ({ page }) => {
+    for (const route of ['/booking/taxi', '/booking/delivery', '/ride-details', '/delivery-details']) {
+      const response = await page.goto(`${CUSTOMER_URL}${route}`);
+      expect(response?.status()).toBeLessThan(500);
+    }
   });
 
   test('network loss recovery on login page', async ({ page, context }) => {
@@ -57,8 +82,10 @@ test.describe('Driver tab matrix', () => {
 test.describe('Ops section matrix', () => {
   test.skip(!HAS_UI, 'Set E2E_UI=1 with running apps to execute UI matrix');
 
-  test('login page loads', async ({ page }) => {
-    const response = await page.goto(`${OPS_URL}/login`);
-    expect(response?.status()).toBeLessThan(500);
-  });
+  for (const route of opsRoutes) {
+    test(`route loads ${route}`, async ({ page }) => {
+      const response = await page.goto(`${OPS_URL}${route}`);
+      expect(response?.status()).toBeLessThan(500);
+    });
+  }
 });

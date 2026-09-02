@@ -2722,6 +2722,12 @@ export type ImpactSummary = {
 export const impactApi = {
   async summary() {
     return requestApi<ImpactSummary>('/impact/summary', { token: getBearerToken() });
+  },
+  async trends() {
+    return requestApi<{ months: Array<{ name: string; co2: number; waterSavedLitres: number; washes: number }> }>(
+      '/impact/trends',
+      { token: getBearerToken() }
+    );
   }
 };
 
@@ -2733,9 +2739,17 @@ export type DriverTodayStats = {
   earningsTodayZar: number;
 };
 
+export type DriverWeekStats = {
+  jobsWeek: number;
+  earningsWeekZar: number;
+};
+
 export const driverStatsApi = {
   async today() {
     return requestApi<DriverTodayStats>('/driver/stats/today', { token: getBearerToken() });
+  },
+  async week() {
+    return requestApi<DriverWeekStats>('/driver/stats/week', { token: getBearerToken() });
   }
 };
 
@@ -2892,7 +2906,12 @@ export const customerAccountApi = {
   updateAddress: (id: string, body: Record<string, unknown>) =>
     requestApi<Record<string, unknown>>(`/customers/me/addresses/${encodeURIComponent(id)}`, { method: 'PATCH', token: getBearerToken(), body }),
   deleteAddress: (id: string) =>
-    requestApi<void>(`/customers/me/addresses/${encodeURIComponent(id)}`, { method: 'DELETE', token: getBearerToken() })
+    requestApi<void>(`/customers/me/addresses/${encodeURIComponent(id)}`, { method: 'DELETE', token: getBearerToken() }),
+  referralsSummary: () =>
+    requestApi<{ referralCode: string | null; invitesCount: number; rewardEarnedZar: number }>(
+      '/customers/me/referrals/summary',
+      { token: getBearerToken() }
+    )
 };
 
 export const driverOperationsApi = {

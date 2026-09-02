@@ -1,28 +1,36 @@
-import { useMemo } from 'react';
-import { Booking } from '../types';
+import { useEffect, useState } from 'react';
+import { impactApi } from '@shared/api';
+import type { ImpactSummary } from '@shared/api';
 
-export function useEcoImpact(completedBookings: Booking[]) {
-  const stats = useMemo(() => {
-    const totalEcoPoints =
-    completedBookings.reduce((sum, b) => sum + (b.ecoPoints || 0), 0);
+export function useEcoImpact() {
+  const [summary, setSummary] = useState<ImpactSummary | null>(null);
+  const [loading, setLoading] = useState(true);
 
-    // Approx: 10 points = 1kg CO2 saved
-    const co2Saved = Math.round(totalEcoPoints / 10);
-
-    // Approx: 100 points = 1 tree
-    const treesSaved = Math.floor(totalEcoPoints / 100);
-
-    // Approx: Waterless wash saves ~150L
-    const waterSaved =
-    completedBookings.filter((b) => b.type === 'WASH').length * 150;
-
-    return {
-      totalEcoPoints,
-      co2Saved,
-      treesSaved,
-      waterSaved
+  useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      try {
+        const data = await impactApi.summary();
+        if (!cancelled) setSummary(data);
+      } catch {
+        if (!cancelled) setSummary(null);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
     };
-  }, [completedBookings]);
+    void load();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
-  return stats;
+  return {
+    loading,
+    totalEcoPoints: summary?.ecoPoints ?? 0,
+    co2Saved: summary?.co2KgSaved ?? 0,
+    treesSaved: Math.floor((summary?.co2KgSaved ?? 0) / 21),
+    waterSaved: summary?.waterSavedLitres ?? 0,
+    washes: summary?.washes ?? 0,
+    ecoStreakDays: summary?.ecoStreakDays ?? 0
+  };
 }

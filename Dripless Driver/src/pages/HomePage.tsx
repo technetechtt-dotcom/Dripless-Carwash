@@ -28,8 +28,7 @@ export function HomePage() {
     setIsOnline,
     activeJob,
     pollAssignedJob,
-    updateJobStatus,
-    earnings
+    updateJobStatus
   } = useDriverBookings();
   useEffect(() => {
     let cancelled = false;
@@ -149,7 +148,7 @@ export function HomePage() {
               <DollarSign size={16} />
             </div>
             <span className="text-lg font-bold text-slate-900 dark:text-white">
-              {new Intl.NumberFormat('en-ZA', { style: 'currency', currency: 'ZAR', maximumFractionDigits: 0 }).format(earnings)}
+              {new Intl.NumberFormat('en-ZA', { style: 'currency', currency: 'ZAR', maximumFractionDigits: 0 }).format(todayStats?.earningsTodayZar ?? 0)}
             </span>
             <span className="text-[10px] text-slate-500 dark:text-slate-400 uppercase tracking-wide">
               Today
