@@ -4,19 +4,20 @@
  */
 import { expect, test } from '@playwright/test';
 import { api, loginCustomer, loginDriver, loginOps } from './helpers/api-client';
-
-const CUSTOMER_EMAIL = process.env.E2E_CUSTOMER_EMAIL || 'technetech.tt@gmail.com';
-const CUSTOMER_PASSWORD = process.env.E2E_CUSTOMER_PASSWORD || 'TestPass123!';
-const DRIVER_EMAIL = process.env.E2E_DRIVER_EMAIL || 'ivanjohnsonijj@gmail.com';
-const DRIVER_PASSWORD = process.env.E2E_DRIVER_PASSWORD || 'TestPass123!';
-const OPS_EMAIL = process.env.E2E_OPS_EMAIL || 'technetech.tt+ops@gmail.com';
-const OPS_PASSWORD = process.env.E2E_OPS_PASSWORD || 'TestPass123!';
+import {
+  E2E_CUSTOMER_EMAIL,
+  E2E_CUSTOMER_PASSWORD,
+  E2E_DRIVER_EMAIL,
+  E2E_DRIVER_PASSWORD,
+  E2E_OPS_EMAIL,
+  E2E_OPS_PASSWORD
+} from './helpers/credentials';
 
 test.describe('staged wash — customer + driver + ops', () => {
   test('catalog excludes taxi/delivery and wash path is reachable', async () => {
-    const customerToken = await loginCustomer(CUSTOMER_EMAIL, CUSTOMER_PASSWORD);
-    const driverToken = await loginDriver(DRIVER_EMAIL, DRIVER_PASSWORD);
-    const opsToken = await loginOps(OPS_EMAIL, OPS_PASSWORD);
+    const customerToken = await loginCustomer(E2E_CUSTOMER_EMAIL, E2E_CUSTOMER_PASSWORD);
+    const driverToken = await loginDriver(E2E_DRIVER_EMAIL, E2E_DRIVER_PASSWORD);
+    const opsToken = await loginOps(E2E_OPS_EMAIL, E2E_OPS_PASSWORD);
 
     const catalog = await api<Array<{ slug: string; name: string }>>(
       '/catalog/services',

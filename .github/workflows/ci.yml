@@ -244,6 +244,8 @@ jobs:
       DRIVER_APP_URL: http://127.0.0.1:4174
       OPS_APP_URL: http://127.0.0.1:4175
       E2E_API_URL: http://127.0.0.1:4000
+      E2E_CUSTOMER_EMAIL: customer@demo.dripless.local
+      E2E_CUSTOMER_PASSWORD: DemoPass123!
       E2E_DRIVER_EMAIL: driver@demo.dripless.local
       E2E_DRIVER_PASSWORD: DemoPass123!
       E2E_OPS_EMAIL: ops@demo.dripless.local

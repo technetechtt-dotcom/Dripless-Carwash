@@ -1,16 +1,17 @@
 import { expect, test } from '@playwright/test';
 import { api, loginCustomer, loginDriver, loginOps, API } from './helpers/api-client';
-
-const CUSTOMER_EMAIL = process.env.E2E_CUSTOMER_EMAIL || 'technetech.tt@gmail.com';
-const CUSTOMER_PASSWORD = process.env.E2E_CUSTOMER_PASSWORD || 'TestPass123!';
-const DRIVER_EMAIL = process.env.E2E_DRIVER_EMAIL || 'ivanjohnsonijj@gmail.com';
-const DRIVER_PASSWORD = process.env.E2E_DRIVER_PASSWORD || 'TestPass123!';
-const OPS_EMAIL = process.env.E2E_OPS_EMAIL || 'technetech.tt+ops@gmail.com';
-const OPS_PASSWORD = process.env.E2E_OPS_PASSWORD || 'TestPass123!';
+import {
+  E2E_CUSTOMER_EMAIL,
+  E2E_CUSTOMER_PASSWORD,
+  E2E_DRIVER_EMAIL,
+  E2E_DRIVER_PASSWORD,
+  E2E_OPS_EMAIL,
+  E2E_OPS_PASSWORD
+} from './helpers/credentials';
 
 test.describe('Customer API acceptance', () => {
   test('auth, impact, catalog, notifications, wallet', async () => {
-    const token = await loginCustomer(CUSTOMER_EMAIL, CUSTOMER_PASSWORD);
+    const token = await loginCustomer(E2E_CUSTOMER_EMAIL, E2E_CUSTOMER_PASSWORD);
     const impact = await api<{
       co2KgSaved: number;
       ecoStreakDays: number;
@@ -41,7 +42,7 @@ test.describe('Customer API acceptance', () => {
 
   test('password reset request accepts email', async () => {
     const result = await api<{ message: string }>('/auth/password-reset/request', 'POST', {
-      email: CUSTOMER_EMAIL
+      email: E2E_CUSTOMER_EMAIL
     });
     expect(result.message).toBeTruthy();
   });
@@ -49,7 +50,7 @@ test.describe('Customer API acceptance', () => {
 
 test.describe('Driver API acceptance', () => {
   test('stats, payouts, online prerequisites', async () => {
-    const token = await loginDriver(DRIVER_EMAIL, DRIVER_PASSWORD);
+    const token = await loginDriver(E2E_DRIVER_EMAIL, E2E_DRIVER_PASSWORD);
     const stats = await api<{
       jobsToday: number;
       onlineHoursToday: number;
@@ -67,7 +68,7 @@ test.describe('Driver API acceptance', () => {
 
 test.describe('Ops RBAC acceptance', () => {
   test('ops admin can reach command sections', async () => {
-    const token = await loginOps(OPS_EMAIL, OPS_PASSWORD);
+    const token = await loginOps(E2E_OPS_EMAIL, E2E_OPS_PASSWORD);
     for (const path of [
       '/ops/dashboard/summary',
       '/ops/bookings',
