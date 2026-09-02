@@ -91,20 +91,6 @@ export const customerServiceOfferings: CustomerServiceOffering[] = [
     description: 'Restore lens clarity and brightness.',
     category: 'SPECIALIZED',
     serviceType: 'WASH'
-  },
-  {
-    id: 'taxi',
-    title: 'Eco Taxi',
-    description: 'Low-emission transport jobs for passengers.',
-    category: 'MOBILITY_DELIVERY',
-    serviceType: 'RIDE'
-  },
-  {
-    id: 'delivery',
-    title: 'Parcel Delivery',
-    description: 'Flexible parcel delivery job requests.',
-    category: 'MOBILITY_DELIVERY',
-    serviceType: 'PARCEL'
   }
 ];
 
@@ -117,7 +103,7 @@ export const customerFeatureSet: CustomerFeature[] = [
   {
     id: 'multi-service-booking',
     title: 'Multi-service Booking',
-    description: 'Customers can request wash, home, ride, and parcel services.'
+    description: 'Customers can request wash and home cleaning services.'
   },
   {
     id: 'real-time-tracking',

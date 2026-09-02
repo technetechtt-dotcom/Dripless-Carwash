@@ -6,98 +6,50 @@ import { PageContainer } from '../components/ui/PageContainer';
 import { GlassCard } from '../components/ui/GlassCard';
 import { SectionHeader } from '../components/ui/SectionHeader';
 import { EcoBadge } from '../components/ui/EcoBadge';
-import { useDriverBookings } from '../contexts/DriverBookingContext';
 import { useEcoImpact } from '../hooks/useEcoImpact';
 export function EcoImpactPage() {
-  const { completedBookings } = useDriverBookings();
-  const stats = useEcoImpact(completedBookings);
+  const stats = useEcoImpact();
   const challenges = [
-  {
-    id: 1,
-    title: 'Complete 10 eco-rides',
-    current: 7,
-    target: 10,
-    icon: Leaf,
-    color: 'text-emerald-500 bg-emerald-50 dark:bg-emerald-900/30'
-  },
-  {
-    id: 2,
-    title: 'Zero-emission week',
-    current: 3,
-    target: 5,
-    icon: Wind,
-    color: 'text-teal-500 bg-teal-50 dark:bg-teal-900/30'
-  },
-  {
-    id: 3,
-    title: 'Water-saving washes',
-    current: 12,
-    target: 15,
-    icon: Droplets,
-    color: 'text-cyan-500 bg-cyan-50 dark:bg-cyan-900/30'
-  }];
+    {
+      id: 1,
+      title: 'Complete 10 eco-washes',
+      current: Math.min(stats.washes, 10),
+      target: 10,
+      icon: Leaf,
+      color: 'text-emerald-500 bg-emerald-50 dark:bg-emerald-900/30'
+    },
+    {
+      id: 2,
+      title: 'Build your eco streak',
+      current: Math.min(stats.ecoStreakDays, 7),
+      target: 7,
+      icon: Wind,
+      color: 'text-teal-500 bg-teal-50 dark:bg-teal-900/30'
+    },
+    {
+      id: 3,
+      title: 'Water-saving washes',
+      current: Math.min(stats.washes, 15),
+      target: 15,
+      icon: Droplets,
+      color: 'text-cyan-500 bg-cyan-50 dark:bg-cyan-900/30'
+    }
+  ];
 
   const leaderboard = [
-  {
-    rank: 1,
-    name: 'Sarah C.',
-    points: 2450,
-    avatar: 'SC'
-  },
-  {
-    rank: 2,
-    name: 'Mike R.',
-    points: 2100,
-    avatar: 'MR'
-  },
-  {
-    rank: 3,
-    name: 'You',
-    points: stats.totalEcoPoints,
-    avatar: 'MJ'
-  },
-  {
-    rank: 4,
-    name: 'Jenny L.',
-    points: 1100,
-    avatar: 'JL'
-  },
-  {
-    rank: 5,
-    name: 'Tom B.',
-    points: 980,
-    avatar: 'TB'
-  }];
+    {
+      rank: 1,
+      name: 'You',
+      points: stats.totalEcoPoints,
+      avatar: 'ME'
+    }
+  ];
 
   const ecoData = [
-  {
-    name: 'Mon',
-    amount: 45
-  },
-  {
-    name: 'Tue',
-    amount: 60
-  },
-  {
-    name: 'Wed',
-    amount: 30
-  },
-  {
-    name: 'Thu',
-    amount: 80
-  },
-  {
-    name: 'Fri',
-    amount: 55
-  },
-  {
-    name: 'Sat',
-    amount: 90
-  },
-  {
-    name: 'Sun',
-    amount: 70
-  }];
+    { name: 'CO₂', amount: stats.co2Saved },
+    { name: 'Water', amount: Math.round(stats.waterSaved / 10) },
+    { name: 'Points', amount: Math.round(stats.totalEcoPoints / 10) }
+  ];
 
   return (
     <PageContainer withOrbs>
@@ -119,7 +71,7 @@ export function EcoImpactPage() {
           <div className="mt-4 flex items-center space-x-2 bg-white/20 backdrop-blur-sm rounded-lg px-3 py-1.5 w-fit border border-white/20">
             <Trophy size={16} className="text-yellow-300" />
             <span className="text-white text-sm font-medium">
-              Top 5% Eco Driver
+              {stats.totalEcoPoints.toLocaleString()} EcoPoints earned
             </span>
           </div>
         </div>

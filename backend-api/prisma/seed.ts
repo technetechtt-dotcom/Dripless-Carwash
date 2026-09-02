@@ -7,12 +7,13 @@ const prisma = new PrismaClient();
 async function upsertService(
   slug: string,
   name: string,
-  options: Array<{ slug: string; name: string; basePrice: number; ecoPointsAward: number }>
+  options: Array<{ slug: string; name: string; basePrice: number; ecoPointsAward: number }>,
+  active = true
 ) {
   const service = await prisma.service.upsert({
     where: { slug },
-    update: { name, active: true },
-    create: { slug, name, active: true }
+    update: { name, active },
+    create: { slug, name, active }
   });
   for (const option of options) {
     await prisma.serviceOption.upsert({
@@ -34,6 +35,71 @@ async function upsertService(
   }
 }
 
+async function ensureDemoDriverCompliance(driverId: string, reviewerId: string) {
+  const expiresAt = new Date(Date.now() + 365 * 86400000);
+  const reviewedAt = new Date();
+  for (const kind of ['SA_ID', 'DRIVERS_LICENCE', 'VEHICLE_REGISTRATION'] as const) {
+    const existing = await prisma.driverDocument.findFirst({ where: { driverId, kind } });
+    if (existing) {
+      await prisma.driverDocument.update({
+        where: { id: existing.id },
+        data: {
+          status: 'APPROVED',
+          expiresAt,
+          reviewedAt,
+          reviewedById: reviewerId,
+          rejectionReason: null
+        }
+      });
+    } else {
+      await prisma.driverDocument.create({
+        data: {
+          driverId,
+          kind,
+          storageKey: `demo/${driverId}/${kind.toLowerCase()}.pdf`,
+          mimeType: 'application/pdf',
+          status: 'APPROVED',
+          expiresAt,
+          reviewedAt,
+          reviewedById: reviewerId
+        }
+      });
+    }
+  }
+
+  const equipment = await prisma.driverEquipment.findFirst({
+    where: { driverId, returnedAt: null, faultNote: null }
+  });
+  if (!equipment) {
+    await prisma.driverEquipment.create({
+      data: {
+        driverId,
+        name: 'Demo pressure kit',
+        serial: 'DEMO-EQ-001'
+      }
+    });
+  }
+
+  for (const item of [
+    { sku: 'shampoo', name: 'Eco shampoo', quantity: 10 },
+    { sku: 'towels', name: 'Microfiber towels', quantity: 20 }
+  ]) {
+    await prisma.driverConsumable.upsert({
+      where: { driverId_sku: { driverId, sku: item.sku } },
+      update: { quantity: item.quantity, name: item.name, threshold: 2 },
+      create: { driverId, ...item, threshold: 2 }
+    });
+  }
+
+  await prisma.driverProfile.update({
+    where: { id: driverId },
+    data: {
+      status: 'ACTIVE',
+      verificationStatus: 'VERIFIED'
+    }
+  });
+}
+
 async function main() {
   if (process.env.DEMO_MODE !== 'true') {
     console.log('Skipping seed: DEMO_MODE is not true');
@@ -47,10 +113,10 @@ async function main() {
   ]);
   await upsertService('taxi', 'Eco Taxi', [
     { slug: 'standard', name: 'Standard Ride', basePrice: 1850, ecoPointsAward: 185 }
-  ]);
+  ], false);
   await upsertService('delivery', 'Parcel Delivery', [
     { slug: 'standard', name: 'Standard Parcel', basePrice: 1200, ecoPointsAward: 120 }
-  ]);
+  ], false);
   await upsertService('window-solar-clean', 'Window & Solar Cleaning', [
     { slug: 'window', name: 'Window Cleaning', basePrice: 3999, ecoPointsAward: 400 },
     { slug: 'solar', name: 'Solar Panel Cleaning', basePrice: 4500, ecoPointsAward: 450 }
@@ -105,7 +171,16 @@ async function main() {
 
   await prisma.user.upsert({
     where: { email: 'driver@demo.dripless.local' },
-    update: {},
+    update: {
+      driverProfile: {
+        update: {
+          online: true,
+          activeBookingId: null,
+          status: 'ACTIVE',
+          verificationStatus: 'VERIFIED'
+        }
+      }
+    },
     create: {
       email: 'driver@demo.dripless.local',
       passwordHash: demoPassword,
@@ -127,19 +202,31 @@ async function main() {
 
   await prisma.driverLocation.upsert({
     where: { driverId: 'driver_demo_001' },
-    update: { lat: -26.1076, lng: 28.0567 },
+    update: {
+      lat: -26.1076,
+      lng: 28.0567,
+      spoofSuspect: false,
+      sourceTimestamp: new Date()
+    },
     create: {
       driverId: 'driver_demo_001',
       lat: -26.1076,
       lng: 28.0567,
       heading: 90,
-      speedKph: 0
+      speedKph: 0,
+      spoofSuspect: false
     }
   });
 
   await prisma.user.upsert({
     where: { email: 'ops@demo.dripless.local' },
-    update: {},
+    update: {
+      opsProfile: {
+        update: {
+          permissions: [...DEFAULT_OPS_PERMISSIONS]
+        }
+      }
+    },
     create: {
       email: 'ops@demo.dripless.local',
       passwordHash: demoPassword,
@@ -155,6 +242,57 @@ async function main() {
       }
     }
   });
+
+  const rbacOpsUsers = [
+    {
+      email: 'ops.dispatch@demo.dripless.local',
+      id: 'ops_dispatch_001',
+      name: 'Demo Dispatcher',
+      permissions: ['bookings:read', 'bookings:assign', 'bookings:update', 'drivers:read', 'incidents:read']
+    },
+    {
+      email: 'ops.support@demo.dripless.local',
+      id: 'ops_support_001',
+      name: 'Demo Support',
+      permissions: ['bookings:read', 'customers:read', 'incidents:read']
+    },
+    {
+      email: 'ops.compliance@demo.dripless.local',
+      id: 'ops_compliance_001',
+      name: 'Demo Compliance',
+      permissions: ['drivers:read', 'drivers:verify', 'incidents:read']
+    }
+  ] as const;
+
+  for (const opsUser of rbacOpsUsers) {
+    await prisma.user.upsert({
+      where: { email: opsUser.email },
+      update: {
+        opsProfile: {
+          update: {
+            name: opsUser.name,
+            permissions: [...opsUser.permissions]
+          }
+        }
+      },
+      create: {
+        email: opsUser.email,
+        passwordHash: demoPassword,
+        role: 'ops_admin',
+        emailVerifiedAt: new Date(),
+        mustChangePassword: false,
+        opsProfile: {
+          create: {
+            id: opsUser.id,
+            name: opsUser.name,
+            permissions: [...opsUser.permissions]
+          }
+        }
+      }
+    });
+  }
+
+  await ensureDemoDriverCompliance('driver_demo_001', 'ops_demo_001');
 
   await prisma.promotion.upsert({
     where: { promoCode: 'ECO10' },
@@ -378,6 +516,9 @@ async function main() {
   console.log('  customer@demo.dripless.local / DemoPass123!');
   console.log('  driver@demo.dripless.local / DemoPass123!');
   console.log('  ops@demo.dripless.local / DemoPass123!');
+  console.log('  ops.dispatch@demo.dripless.local / DemoPass123!');
+  console.log('  ops.support@demo.dripless.local / DemoPass123!');
+  console.log('  ops.compliance@demo.dripless.local / DemoPass123!');
   console.log('  promo: ECO10');
 }
 

@@ -13,6 +13,7 @@ export const DEFAULT_OPS_PERMISSIONS = [
   'incidents:manage',
   'payments:manage',
   'payouts:manage',
+  'specials:manage',
   'privacy:manage',
   'settings:manage'
 ] as const;

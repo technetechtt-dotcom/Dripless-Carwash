@@ -1,26 +1,47 @@
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import {
-  LeafIcon,
-  TreesIcon,
-  GiftIcon,
-  TrophyIcon,
-  Share2Icon } from
-'lucide-react';
+import { LeafIcon, TreesIcon, GiftIcon, TrophyIcon, Share2Icon } from 'lucide-react';
 import EcoChart from '../components/EcoChart';
 import EcoChallenges from '../components/EcoChallenges';
 import EcoLeaderboard from '../components/EcoLeaderboard';
 import { ROUTES } from '../utils/routes';
+import { impactApi } from '@shared/api';
+import type { ImpactSummary } from '@shared/api';
+
+function ecoLevel(points: number) {
+  const level = Math.max(1, Math.floor(points / 500) + 1);
+  const prevThreshold = (level - 1) * 500;
+  const nextThreshold = level * 500;
+  const progress = nextThreshold === prevThreshold
+    ? 100
+    : Math.min(100, ((points - prevThreshold) / (nextThreshold - prevThreshold)) * 100);
+  return { level, label: `Level ${level}`, nextThreshold, progress };
+}
 
 const Rewards = () => {
   const navigate = useNavigate();
-  const [points, setPoints] = useState(1250);
+  const [summary, setSummary] = useState<ImpactSummary | null>(null);
   const [showAllAchievements, setShowAllAchievements] = useState(false);
   const [showAllRewards, setShowAllRewards] = useState(false);
   const [redeemFeedback, setRedeemFeedback] = useState('');
 
+  useEffect(() => {
+    let cancelled = false;
+    impactApi.summary().then((data) => {
+      if (!cancelled) setSummary(data);
+    }).catch(() => {
+      if (!cancelled) setSummary(null);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const points = summary?.ecoPoints ?? 0;
+  const levelInfo = useMemo(() => ecoLevel(points), [points]);
+
   const shareImpact = async () => {
-    const text = `I have ${points} EcoPoints on Dripless and I'm Level 3: Eco Enthusiast!`;
+    const text = `I have ${points} EcoPoints on Dripless — ${levelInfo.label}!`;
     if (typeof navigator !== 'undefined' && navigator.share) {
       try {
         await navigator.share({ title: 'My Dripless Eco Impact', text });
@@ -42,8 +63,7 @@ const Rewards = () => {
       setRedeemFeedback(`Need ${cost - points} more points for ${label}.`);
       return;
     }
-    setPoints((prev) => prev - cost);
-    setRedeemFeedback(`Redeemed ${label}. ${cost} points deducted.`);
+    setRedeemFeedback(`Redeem ${label} in-app soon — ${cost} points required.`);
   };
 
   return (
@@ -61,20 +81,15 @@ const Rewards = () => {
         <div className="relative z-10">
           <h2 className="text-lg font-medium mb-1">Your EcoPoints</h2>
           <div className="text-4xl font-bold mb-2">{points.toLocaleString()}</div>
-          <div className="text-sm opacity-90 mb-4">Level 3: Eco Enthusiast</div>
+          <div className="text-sm opacity-90 mb-4">{levelInfo.label}</div>
 
           <div className="mt-4">
             <div className="h-2 w-full bg-white/30 rounded-full overflow-hidden">
-              <div
-                className="h-full bg-white rounded-full"
-                style={{
-                  width: '65%'
-                }}>
-              </div>
+              <div className="h-full bg-white rounded-full" style={{ width: `${levelInfo.progress}%` }} />
             </div>
             <div className="flex justify-between text-xs mt-1">
-              <span>0</span>
-              <span>Next level: 1,500 pts</span>
+              <span>{(levelInfo.level - 1) * 500}</span>
+              <span>Next level: {levelInfo.nextThreshold} pts</span>
             </div>
           </div>
 

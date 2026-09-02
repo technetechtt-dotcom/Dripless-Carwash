@@ -9,15 +9,44 @@ export function isDatabaseConnectionError(error: unknown): boolean {
   const message = candidate.message ?? '';
   return (
     message.includes('Server has closed the connection') ||
-    message.includes("Can't reach database server")
+    message.includes("Can't reach database server") ||
+    message.includes('Engine is not yet connected')
   );
 }
 
 const client = new PrismaClient();
 
-async function reconnectDatabase() {
-  await client.$disconnect().catch(() => undefined);
-  await client.$connect();
+let connectPromise: Promise<void> | null = null;
+
+async function ensureConnected() {
+  if (!connectPromise) {
+    connectPromise = (async () => {
+      try {
+        await client.$connect();
+      } catch {
+        await client.$disconnect().catch(() => undefined);
+        await client.$connect();
+      }
+    })().finally(() => {
+      connectPromise = null;
+    });
+  }
+  await connectPromise;
+}
+
+export async function connectDatabase(retries = 5) {
+  let lastError: unknown;
+  for (let attempt = 1; attempt <= retries; attempt++) {
+    try {
+      await client.$connect();
+      return;
+    } catch (error) {
+      lastError = error;
+      if (attempt === retries) throw error;
+      await new Promise((resolve) => setTimeout(resolve, attempt * 750));
+    }
+  }
+  throw lastError;
 }
 
 export async function withConnectionRetry<T>(operation: () => Promise<T>, retries = 4): Promise<T> {
@@ -28,7 +57,7 @@ export async function withConnectionRetry<T>(operation: () => Promise<T>, retrie
     } catch (error) {
       lastError = error;
       if (!isDatabaseConnectionError(error) || attempt === retries) throw error;
-      await reconnectDatabase();
+      await ensureConnected();
       await new Promise((resolve) => setTimeout(resolve, attempt * 750));
     }
   }
@@ -42,3 +71,5 @@ export const prisma = client.$extends({
     }
   }
 }) as unknown as PrismaClient;
+
+export { client as prismaClient };

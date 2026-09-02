@@ -122,9 +122,10 @@ driversRouter.patch(
         const elapsedHours = Math.max(1, recordedAt.getTime() - previous.updatedAt.getTime()) / 3_600_000;
         computedSpeedKph = distanceKm / elapsedHours;
       }
+      const accuracySpoofThresholdM = env.isProduction ? 200 : 10_000;
       const spoofSuspect = Boolean(
         (computedSpeedKph != null && computedSpeedKph > 180) ||
-        (req.body.accuracyM != null && req.body.accuracyM > 200)
+        (req.body.accuracyM != null && req.body.accuracyM > accuracySpoofThresholdM)
       );
 
       const activeAreas = await prisma.serviceArea.findMany({ where: { active: true } });
