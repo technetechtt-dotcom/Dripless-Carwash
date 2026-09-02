@@ -1,6 +1,23 @@
 import { api } from './api-client';
+import { E2E_DRIVER_ID } from './credentials';
 
 const SANDTON = { lat: -26.1076, lng: 28.0567 };
+
+async function releaseDemoDriverJobs(input: { opsToken: string; customerToken: string }) {
+  const bookings = await api<Array<{ id: string; driverId?: string | null; status: string }>>(
+    '/ops/bookings',
+    'GET',
+    undefined,
+    input.opsToken
+  );
+  for (const row of bookings) {
+    if (row.driverId !== E2E_DRIVER_ID) continue;
+    if (row.status === 'COMPLETED' || row.status === 'CANCELLED') continue;
+    await api(`/bookings/${row.id}/cancel`, 'POST', { reason: 'E2E driver release' }, input.customerToken).catch(
+      () => undefined
+    );
+  }
+}
 
 export type GoldenWashResult = {
   bookingId: string;
@@ -50,20 +67,36 @@ export async function runGoldenWash(input: {
   await api('/payments/webhooks/stub', 'POST', { paymentId: intent.paymentId });
   await api('/payments/webhooks/stub', 'POST', { paymentId: intent.paymentId });
 
-  await api('/driver/online', 'POST', { online: true }, input.driverToken);
   await api(
     '/driver/location',
     'PATCH',
-    { lat: SANDTON.lat, lng: SANDTON.lng, accuracyM: 25 },
+    {
+      lat: SANDTON.lat,
+      lng: SANDTON.lng,
+      accuracyM: 25,
+      recordedAt: new Date().toISOString()
+    },
     input.driverToken
   );
 
-  await api(
-    `/ops/bookings/${booking.id}/assign-driver`,
-    'PATCH',
-    { driverId: input.driverId, reason: 'Staged wash assignment' },
-    input.opsToken
+  const bookingState = await api<{ driverId?: string | null }>(
+    `/bookings/${booking.id}`,
+    'GET',
+    undefined,
+    input.customerToken
   );
+
+  const driverId = input.driverId || E2E_DRIVER_ID;
+
+  if (!bookingState.driverId) {
+    await api('/driver/online', 'POST', { online: true }, input.driverToken);
+    await api(
+      `/ops/bookings/${booking.id}/assign-driver`,
+      'PATCH',
+      { driverId, reason: 'Staged wash assignment' },
+      input.opsToken
+    );
+  }
 
   for (const status of ['EN_ROUTE', 'ARRIVED', 'IN_PROGRESS'] as const) {
     await api(`/bookings/${booking.id}/status`, 'PATCH', { status }, input.driverToken);
@@ -103,7 +136,7 @@ export async function runGoldenWash(input: {
     customerToken: input.customerToken,
     driverToken: input.driverToken,
     opsToken: input.opsToken,
-    driverId: input.driverId
+    driverId: input.driverId || E2E_DRIVER_ID
   };
 }
 

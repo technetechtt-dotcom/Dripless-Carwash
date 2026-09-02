@@ -10,7 +10,7 @@ test.describe('Customer form validation', () => {
 
   test('login rejects empty submit', async ({ page }) => {
     await page.goto(`${CUSTOMER_URL}/login`);
-    await page.getByRole('button', { name: /sign in|log in/i }).click();
+    await page.getByRole('button', { name: /sign in|log in/i }).first().click();
     await expect(page.locator('body')).toBeVisible();
     await expect(page).toHaveURL(/login/);
   });
@@ -35,7 +35,7 @@ test.describe('Driver form validation', () => {
 
   test('login rejects empty submit', async ({ page }) => {
     await page.goto(`${DRIVER_URL}/login`);
-    await page.getByRole('button', { name: /sign in|log in/i }).click();
+    await page.getByRole('button', { name: /sign in|log in/i }).first().click();
     await expect(page).toHaveURL(/login/);
   });
 });
@@ -45,7 +45,7 @@ test.describe('Ops form validation', () => {
 
   test('login rejects empty submit', async ({ page }) => {
     await page.goto(`${OPS_URL}/login`);
-    await page.getByRole('button', { name: /sign in|log in/i }).click();
+    await page.getByRole('button', { name: /sign in|log in/i }).first().click();
     await expect(page).toHaveURL(/login/);
   });
 });

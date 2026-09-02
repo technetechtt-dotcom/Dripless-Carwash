@@ -266,14 +266,23 @@ jobs:
           npm run test:ozow-failures
 
       - name: Load smoke
-        working-directory: .
+        working-directory: backend-api
         run: |
-          npm --prefix backend-api ci
-          npx tsx backend-api/src/index.ts > /tmp/api.log 2>&1 &
+          ready=0
+          npx tsx src/index.ts > /tmp/api.log 2>&1 &
           for i in $(seq 1 60); do
-            if curl -sf http://127.0.0.1:4000/health >/dev/null; then break; fi
+            if curl -sf http://127.0.0.1:4000/health >/dev/null; then
+              ready=1
+              break
+            fi
             sleep 1
           done
+          if [ "$ready" != "1" ]; then
+            echo "API failed to start for load smoke" >&2
+            cat /tmp/api.log >&2
+            exit 1
+          fi
+          cd ..
           E2E_API_URL=http://127.0.0.1:4000 node tools/pilot/load-smoke.mjs
 
   e2e-cross-platform:
@@ -378,9 +387,9 @@ jobs:
 
       - name: Serve three apps
         run: |
-          npx --yes serve -l 4173 "Dripless Customer/dist" > /tmp/serve-customer.log 2>&1 &
-          npx --yes serve -l 4174 "Dripless Driver/dist" > /tmp/serve-driver.log 2>&1 &
-          npx --yes serve -l 4175 "Dripless Ops Admin/dist" > /tmp/serve-ops.log 2>&1 &
+          npx --yes serve -s -l 4173 "Dripless Customer/dist" > /tmp/serve-customer.log 2>&1 &
+          npx --yes serve -s -l 4174 "Dripless Driver/dist" > /tmp/serve-driver.log 2>&1 &
+          npx --yes serve -s -l 4175 "Dripless Ops Admin/dist" > /tmp/serve-ops.log 2>&1 &
           sleep 3
 
       - name: Install Playwright

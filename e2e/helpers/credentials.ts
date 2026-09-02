@@ -5,6 +5,7 @@ export const E2E_CUSTOMER_PASSWORD =
   process.env.E2E_CUSTOMER_PASSWORD || 'DemoPass123!';
 export const E2E_DRIVER_EMAIL = process.env.E2E_DRIVER_EMAIL || 'driver@demo.dripless.local';
 export const E2E_DRIVER_PASSWORD = process.env.E2E_DRIVER_PASSWORD || 'DemoPass123!';
+export const E2E_DRIVER_ID = process.env.E2E_DRIVER_ID || 'driver_demo_001';
 export const E2E_OPS_EMAIL = process.env.E2E_OPS_EMAIL || 'ops@demo.dripless.local';
 export const E2E_OPS_PASSWORD = process.env.E2E_OPS_PASSWORD || 'DemoPass123!';
 export const E2E_OPS_DISPATCH_EMAIL =

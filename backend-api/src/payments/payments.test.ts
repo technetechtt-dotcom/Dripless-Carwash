@@ -11,6 +11,11 @@ import {
   processRefund
 } from './service.js';
 import { verifyPaystackSignature } from './paystack.js';
+import {
+  defaultBookingPayload,
+  seedTestCarWashService,
+  seedTestServiceArea
+} from '../test-helpers/pilot-area.js';
 
 const app = createApp();
 
@@ -22,17 +27,8 @@ describe('payments webhooks and wallet ledger', () => {
   let paymentId = '';
 
   beforeAll(async () => {
-    await prisma.service.upsert({
-      where: { slug: 'car-wash' },
-      update: {},
-      create: {
-        slug: 'car-wash',
-        name: 'Car Wash',
-        options: {
-          create: [{ slug: 'basic', name: 'Basic Wash', basePrice: 1599, ecoPointsAward: 160 }]
-        }
-      }
-    });
+    await seedTestServiceArea();
+    await seedTestCarWashService();
     const email = `pay_${Date.now()}@test.dripless.local`;
     const signup = await request(app).post('/auth/customer/signup').send({
       name: 'Payer',
@@ -54,12 +50,11 @@ describe('payments webhooks and wallet ledger', () => {
     const booking = await request(app)
       .post('/bookings')
       .set('Authorization', `Bearer ${accessToken}`)
-      .send({
-        serviceSlug: 'car-wash',
-        optionSlug: 'basic',
+      .send(defaultBookingPayload({
         pickupLocation: '123 Main Street Sandton',
-        pickupCoordinates: { lat: -26.1, lng: 28.05 }
-      });
+        pickupCoordinates: { lat: -26.1076, lng: 28.0567 }
+      }));
+    expect(booking.status).toBe(201);
     bookingId = booking.body.id;
   });
 

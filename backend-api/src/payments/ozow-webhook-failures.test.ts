@@ -8,6 +8,11 @@ import { createApp } from '../app.js';
 import { prisma } from '../db/prisma.js';
 import { env } from '../config/env.js';
 import { buildOzowNotifyHash } from './ozow.js';
+import {
+  defaultBookingPayload,
+  seedTestCarWashService,
+  seedTestServiceArea
+} from '../test-helpers/pilot-area.js';
 
 const app = createApp();
 const PRIVATE_KEY = 'test-ozow-private-key';
@@ -40,17 +45,8 @@ describe('Ozow sandbox webhook failure scenarios', () => {
     env.OZOW_PRIVATE_KEY = PRIVATE_KEY;
     env.OZOW_SITE_CODE = SITE_CODE;
 
-    await prisma.service.upsert({
-      where: { slug: 'car-wash' },
-      update: {},
-      create: {
-        slug: 'car-wash',
-        name: 'Car Wash',
-        options: {
-          create: [{ slug: 'basic', name: 'Basic Wash', basePrice: 1599, ecoPointsAward: 160 }]
-        }
-      }
-    });
+    await seedTestServiceArea();
+    await seedTestCarWashService();
 
     const email = `ozow_fail_${Date.now()}@test.dripless.local`;
     const signup = await request(app).post('/auth/customer/signup').send({
@@ -64,12 +60,11 @@ describe('Ozow sandbox webhook failure scenarios', () => {
     const booking = await request(app)
       .post('/bookings')
       .set('Authorization', `Bearer ${accessToken}`)
-      .send({
-        serviceSlug: 'car-wash',
-        optionSlug: 'basic',
+      .send(defaultBookingPayload({
         pickupLocation: '123 Main Street Sandton',
-        pickupCoordinates: { lat: -26.1, lng: 28.05 }
-      });
+        pickupCoordinates: { lat: -26.1076, lng: 28.0567 }
+      }));
+    expect(booking.status).toBe(201);
     bookingId = booking.body.id;
 
     const intent = await request(app)
@@ -118,12 +113,11 @@ describe('Ozow sandbox webhook failure scenarios', () => {
     const booking = await request(app)
       .post('/bookings')
       .set('Authorization', `Bearer ${signup.body.session.tokens.accessToken}`)
-      .send({
-        serviceSlug: 'car-wash',
-        optionSlug: 'basic',
+      .send(defaultBookingPayload({
         pickupLocation: '123 Main Street Sandton',
-        pickupCoordinates: { lat: -26.1, lng: 28.05 }
-      });
+        pickupCoordinates: { lat: -26.1076, lng: 28.0567 }
+      }));
+    expect(booking.status).toBe(201);
     const intent = await request(app)
       .post('/payments/intent')
       .set('Authorization', `Bearer ${signup.body.session.tokens.accessToken}`)
@@ -169,12 +163,11 @@ describe('Ozow sandbox webhook failure scenarios', () => {
     const booking = await request(app)
       .post('/bookings')
       .set('Authorization', `Bearer ${signup.body.session.tokens.accessToken}`)
-      .send({
-        serviceSlug: 'car-wash',
-        optionSlug: 'basic',
+      .send(defaultBookingPayload({
         pickupLocation: '123 Main Street Sandton',
-        pickupCoordinates: { lat: -26.1, lng: 28.05 }
-      });
+        pickupCoordinates: { lat: -26.1076, lng: 28.0567 }
+      }));
+    expect(booking.status).toBe(201);
     const intent = await request(app)
       .post('/payments/intent')
       .set('Authorization', `Bearer ${signup.body.session.tokens.accessToken}`)
