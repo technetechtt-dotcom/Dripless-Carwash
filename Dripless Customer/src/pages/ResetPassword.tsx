@@ -29,7 +29,7 @@ export default function ResetPassword() {
         <form onSubmit={submit} className="space-y-4 mt-5">
           <input required type="password" autoComplete="new-password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="New password" className="w-full p-3 rounded-xl border dark:bg-slate-800 dark:text-white"/>
           <input required type="password" autoComplete="new-password" value={confirm} onChange={(e) => setConfirm(e.target.value)} placeholder="Confirm password" className="w-full p-3 rounded-xl border dark:bg-slate-800 dark:text-white"/>
-          <button className="btn-primary w-full py-3">Update password</button>
+          <button type="submit" className="btn-primary w-full py-3">Update password</button>
         </form>}
     </section>
   </main>;

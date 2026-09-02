@@ -11,6 +11,7 @@ import { passkeyRouter } from './auth/passkeyRoutes.js';
 import { bookingsRouter } from './bookings/routes.js';
 import { driversRouter } from './drivers/routes.js';
 import { driverOnboardingRouter } from './drivers/onboarding.js';
+import { driverStatsRouter } from './drivers/stats.js';
 import { opsRouter } from './ops/routes.js';
 import { specialsOpsRouter, specialsPublicRouter } from './specials/routes.js';
 import { paymentsRouter } from './payments/routes.js';
@@ -172,6 +173,7 @@ export function createApp() {
   app.use('/bookings', evidenceRouter);
   app.use('/driver', driversRouter);
   app.use('/driver', driverOnboardingRouter);
+  app.use('/driver', driverStatsRouter);
   app.use('/ops', opsRouter);
   app.use('/specials', specialsPublicRouter);
   app.use('/ops/specials', specialsOpsRouter);

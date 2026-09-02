@@ -9,7 +9,8 @@ import { useDriverBookings } from '../contexts/DriverBookingContext';
 import { GlassCard } from '../components/ui/GlassCard';
 import { GlassButton } from '../components/ui/GlassButton';
 import { PageContainer } from '../components/ui/PageContainer';
-import { specialsApi } from '@shared/api';
+import { specialsApi, driverStatsApi, notificationApi } from '@shared/api';
+import type { DriverTodayStats } from '@shared/api';
 import type { OpsSpecial } from '@shared/types';
 import { useToast } from '../contexts/ToastContext';
 import { NotificationsPage } from './NotificationsPage';
@@ -20,11 +21,13 @@ export function HomePage() {
   const [redeemFeedback, setRedeemFeedback] = useState('');
   const [showNotifications, setShowNotifications] = useState(false);
   const { showToast } = useToast();
+  const [todayStats, setTodayStats] = useState<DriverTodayStats | null>(null);
+  const [unreadCount, setUnreadCount] = useState(0);
   const {
     isOnline,
     setIsOnline,
     activeJob,
-    simulateJobRequest,
+    pollAssignedJob,
     updateJobStatus,
     earnings
   } = useDriverBookings();
@@ -47,6 +50,41 @@ export function HomePage() {
       cancelled = true;
     };
   }, []);
+  useEffect(() => {
+    let cancelled = false;
+    const loadStats = async () => {
+      try {
+        const stats = await driverStatsApi.today();
+        if (!cancelled) setTodayStats(stats);
+      } catch {
+        if (!cancelled) setTodayStats(null);
+      }
+    };
+    void loadStats();
+    const timer = window.setInterval(() => void loadStats(), 30000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [isOnline]);
+  useEffect(() => {
+    if (!driver?.id) return;
+    let cancelled = false;
+    const loadUnread = async () => {
+      try {
+        const count = await notificationApi.unreadCount('driver', driver.id);
+        if (!cancelled) setUnreadCount(count);
+      } catch {
+        if (!cancelled) setUnreadCount(0);
+      }
+    };
+    void loadUnread();
+    const timer = window.setInterval(() => void loadUnread(), 30000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [driver?.id]);
   const redeemDriverSpecial = async () => {
     if (!driver?.id) {
       setRedeemFeedback('Driver session not available.');
@@ -95,7 +133,11 @@ export function HomePage() {
           onClick={showNotificationSummary}>
 
           <Bell size={20} />
-          <span className="absolute top-2 right-2 w-2 h-2 bg-red-500 rounded-full border-2 border-white dark:border-slate-800" />
+          {unreadCount > 0 && (
+            <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 bg-red-500 text-white text-[10px] font-bold rounded-full border-2 border-white dark:border-slate-800 flex items-center justify-center">
+              {unreadCount > 9 ? '9+' : unreadCount}
+            </span>
+          )}
         </button>
       </header>
 
@@ -119,7 +161,7 @@ export function HomePage() {
               <Zap size={16} />
             </div>
             <span className="text-lg font-bold text-slate-900 dark:text-white">
-              7
+              {todayStats?.jobsToday ?? 0}
             </span>
             <span className="text-[10px] text-slate-500 dark:text-slate-400 uppercase tracking-wide">
               Jobs
@@ -131,7 +173,7 @@ export function HomePage() {
               <Map size={16} />
             </div>
             <span className="text-lg font-bold text-slate-900 dark:text-white">
-              5.2h
+              {(todayStats?.onlineHoursToday ?? 0).toFixed(1)}h
             </span>
             <span className="text-[10px] text-slate-500 dark:text-slate-400 uppercase tracking-wide">
               Online
@@ -250,7 +292,7 @@ export function HomePage() {
                 className="w-full">
 
                     <GlassButton
-                  onClick={simulateJobRequest}
+                  onClick={pollAssignedJob}
                   variant="secondary"
                   className="w-full py-3">
 

@@ -2579,7 +2579,11 @@ export const notificationApi = {
       method: 'POST',
       token: getBearerToken(),
       body: { token, platform }
-    })
+    }),
+  async unreadCount(role: AppRole, userId: string) {
+    const rows = await notificationApi.listNotifications(role, userId);
+    return rows.filter((row) => !row.read).length;
+  }
 };
 
 export const specialsApi = {
@@ -2699,8 +2703,46 @@ export const paymentsApi = {
 
 export const catalogApi = {
   async services() {
-    return requestApi<unknown[]>('/catalog/services', { token: getBearerToken() });
+    return requestApi<CatalogServiceRecord[]>('/catalog/services', { token: getBearerToken() });
   }
+};
+
+export type ImpactSummary = {
+  washes: number;
+  waterUsedLitres: number;
+  waterSavedLitres: number;
+  co2KgSaved: number;
+  plasticKgReduced: number;
+  projectedCo2KgYear: number;
+  ecoStreakDays: number;
+  ecoPoints: number;
+  methodology: string;
+};
+
+export const impactApi = {
+  async summary() {
+    return requestApi<ImpactSummary>('/impact/summary', { token: getBearerToken() });
+  }
+};
+
+export type DriverTodayStats = {
+  jobsCompletedToday: number;
+  jobsActiveToday: number;
+  jobsToday: number;
+  onlineHoursToday: number;
+  earningsTodayZar: number;
+};
+
+export const driverStatsApi = {
+  async today() {
+    return requestApi<DriverTodayStats>('/driver/stats/today', { token: getBearerToken() });
+  }
+};
+
+type CatalogServiceRecord = {
+  slug: string;
+  name: string;
+  description?: string | null;
 };
 
 export const accountApi = {

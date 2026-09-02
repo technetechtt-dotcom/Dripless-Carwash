@@ -306,10 +306,17 @@ async function ensureOpsAdmin() {
   return spec.email;
 }
 
+async function ensureLaunchCatalog() {
+  for (const slug of ['taxi', 'delivery']) {
+    await prisma.service.updateMany({ where: { slug }, data: { active: false } });
+  }
+}
+
 async function main() {
   const customerEmail = await ensureCustomer();
   const driverEmail = await ensureDriver();
   const opsEmail = await ensureOpsAdmin();
+  await ensureLaunchCatalog();
   console.log('Test accounts ready.');
   console.log(`  Customer: ${customerEmail} / ${TEST_PASSWORD}`);
   console.log(`  Driver:   ${driverEmail} / ${TEST_PASSWORD}`);

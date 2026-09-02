@@ -7,12 +7,13 @@ const prisma = new PrismaClient();
 async function upsertService(
   slug: string,
   name: string,
-  options: Array<{ slug: string; name: string; basePrice: number; ecoPointsAward: number }>
+  options: Array<{ slug: string; name: string; basePrice: number; ecoPointsAward: number }>,
+  active = true
 ) {
   const service = await prisma.service.upsert({
     where: { slug },
-    update: { name, active: true },
-    create: { slug, name, active: true }
+    update: { name, active },
+    create: { slug, name, active }
   });
   for (const option of options) {
     await prisma.serviceOption.upsert({
@@ -112,10 +113,10 @@ async function main() {
   ]);
   await upsertService('taxi', 'Eco Taxi', [
     { slug: 'standard', name: 'Standard Ride', basePrice: 1850, ecoPointsAward: 185 }
-  ]);
+  ], false);
   await upsertService('delivery', 'Parcel Delivery', [
     { slug: 'standard', name: 'Standard Parcel', basePrice: 1200, ecoPointsAward: 120 }
-  ]);
+  ], false);
   await upsertService('window-solar-clean', 'Window & Solar Cleaning', [
     { slug: 'window', name: 'Window Cleaning', basePrice: 3999, ecoPointsAward: 400 },
     { slug: 'solar', name: 'Solar Panel Cleaning', basePrice: 4500, ecoPointsAward: 450 }

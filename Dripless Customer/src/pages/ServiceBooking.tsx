@@ -24,6 +24,7 @@ import { apiRuntimeConfig, catalogApi, customerAccountApi, specialsApi } from '@
 import type { OpsSpecial, SpecialServiceScope } from '@shared/types';
 import { ROUTES } from '../utils/routes';
 import { formatCurrency } from '../utils/currency';
+import { isLaunchVisibleService } from '@shared/catalog-offerings';
 const serviceTypes = {
   'car-wash': {
     title: 'Carwash Service',
@@ -275,6 +276,11 @@ type FavoriteLocation = {
 const ServiceBooking = () => {
   const { service } = useParams();
   const navigate = useNavigate();
+  useEffect(() => {
+    if (service && !isLaunchVisibleService(service) && service !== 'mattress-cleaning' && service !== 'couch-cleaning' && service !== 'carpet-cleaning') {
+      navigate(ROUTES.SERVICES, { replace: true });
+    }
+  }, [service, navigate]);
   const [selectedOption, setSelectedOption] = useState('');
   const [date, setDate] = useState('');
   const [time, setTime] = useState('');

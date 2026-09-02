@@ -70,7 +70,9 @@ export default function AddressAutocomplete({
               <button
                 type="button"
                 className="w-full px-3 py-2 text-left text-sm text-slate-700 hover:bg-eco-50 dark:text-slate-200 dark:hover:bg-slate-800"
-                onMouseDown={(event) => event.preventDefault()}
+                onMouseDown={function preventBlur(event) {
+                  event.preventDefault();
+                }}
                 onClick={() => {
                   onSelect(suggestion);
                   onChange(suggestion.label);

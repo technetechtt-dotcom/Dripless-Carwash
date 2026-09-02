@@ -37,7 +37,9 @@ export function JobsPage() {
     label: 'Home Services'
   }];
 
-  const supportedServiceCount = customerServiceOfferings.length;
+  const supportedServiceCount = customerServiceOfferings.filter(
+    (offering) => offering.category !== 'MOBILITY_DELIVERY'
+  ).length;
 
   return (
     <PageContainer withOrbs>

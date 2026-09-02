@@ -40,7 +40,7 @@ interface DriverBookingContextType {
   incomingJob: Job | null;
   jobToRate: Job | null;
   // Job Actions
-  simulateJobRequest: () => Promise<void>;
+  pollAssignedJob: () => Promise<void>;
   acceptJob: () => Promise<void>;
   declineJob: () => Promise<void>;
   updateJobStatus: (status: JobStatus) => Promise<void>;
@@ -389,7 +389,7 @@ export const DriverBookingProvider: React.FC<{
     };
   }, [activeJob, driver?.id, incomingJob, isOnline]);
   // Job Logic
-  const simulateJobRequest = async () => {
+  const pollAssignedJob = async () => {
     if (activeJob || incomingJob || !isOnline) {
       if (!isOnline) showToast('You must be online to receive jobs', 'error');
       return;
@@ -607,7 +607,7 @@ export const DriverBookingProvider: React.FC<{
         activeJob,
         incomingJob,
         jobToRate,
-        simulateJobRequest,
+        pollAssignedJob,
         acceptJob,
         declineJob,
         updateJobStatus,
