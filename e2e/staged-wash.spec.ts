@@ -10,6 +10,7 @@ import {
   E2E_CUSTOMER_PASSWORD,
   E2E_DRIVER_EMAIL,
   E2E_DRIVER_PASSWORD,
+  E2E_DRIVER_ID,
   E2E_OPS_EMAIL,
   E2E_OPS_PASSWORD
 } from './helpers/credentials';
@@ -23,7 +24,7 @@ test.describe('P0 staged wash — no developer intervention', () => {
       { email: E2E_DRIVER_EMAIL, password: E2E_DRIVER_PASSWORD }
     );
     const driverToken = driverLogin.session.tokens.accessToken;
-    const driverId = String(driverLogin.profile?.id || '');
+    const driverId = E2E_DRIVER_ID;
     const opsToken = await loginOps(E2E_OPS_EMAIL, E2E_OPS_PASSWORD);
 
     const earningsBefore = await api<{ availableZar: number }>('/payouts/me', 'GET', undefined, driverToken);

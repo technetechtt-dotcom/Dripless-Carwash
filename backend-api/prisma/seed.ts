@@ -171,7 +171,16 @@ async function main() {
 
   await prisma.user.upsert({
     where: { email: 'driver@demo.dripless.local' },
-    update: {},
+    update: {
+      driverProfile: {
+        update: {
+          online: true,
+          activeBookingId: null,
+          status: 'ACTIVE',
+          verificationStatus: 'VERIFIED'
+        }
+      }
+    },
     create: {
       email: 'driver@demo.dripless.local',
       passwordHash: demoPassword,
@@ -193,7 +202,12 @@ async function main() {
 
   await prisma.driverLocation.upsert({
     where: { driverId: 'driver_demo_001' },
-    update: { lat: -26.1076, lng: 28.0567, spoofSuspect: false },
+    update: {
+      lat: -26.1076,
+      lng: 28.0567,
+      spoofSuspect: false,
+      sourceTimestamp: new Date()
+    },
     create: {
       driverId: 'driver_demo_001',
       lat: -26.1076,

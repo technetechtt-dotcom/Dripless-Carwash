@@ -10,7 +10,8 @@ import {
   E2E_CUSTOMER_EMAIL,
   E2E_CUSTOMER_PASSWORD,
   E2E_DRIVER_EMAIL,
-  E2E_DRIVER_PASSWORD
+  E2E_DRIVER_PASSWORD,
+  E2E_DRIVER_ID
 } from './helpers/credentials';
 
 const OPS_SECTIONS = [
@@ -19,7 +20,7 @@ const OPS_SECTIONS = [
   { path: '/ops/drivers', label: 'Drivers' },
   { path: '/ops/customers', label: 'Customers' },
   { path: '/ops/incidents', label: 'Incidents' },
-  { path: '/ops/notifications', label: 'Broadcasts' },
+  { path: '/ops/settings', label: 'Platform settings' },
   { path: '/ops/specials', label: 'Promotions' },
   { path: '/ops/finance/payments', label: 'Finance' },
   { path: '/ops/activity', label: 'Audit' },
@@ -45,7 +46,7 @@ test.describe('Ops actions and RBAC', () => {
       'POST',
       { email: E2E_DRIVER_EMAIL, password: E2E_DRIVER_PASSWORD }
     );
-    const driverId = String(driverLogin.profile?.id || '');
+    const driverId = E2E_DRIVER_ID;
 
     const noon = new Date();
     noon.setDate(noon.getDate() + 1);
@@ -102,7 +103,7 @@ test.describe('Ops actions and RBAC', () => {
       customerToken,
       driverToken: driverLogin.session.tokens.accessToken,
       opsToken,
-      driverId: String(driverLogin.profile?.id || '')
+      driverId: E2E_DRIVER_ID
     });
 
     const finance = await api<Array<{ status: string }>>('/ops/finance/payments', 'GET', undefined, opsToken);

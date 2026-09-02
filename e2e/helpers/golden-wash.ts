@@ -1,4 +1,5 @@
 import { api } from './api-client';
+import { E2E_DRIVER_ID } from './credentials';
 
 const SANDTON = { lat: -26.1076, lng: 28.0567 };
 
@@ -50,18 +51,20 @@ export async function runGoldenWash(input: {
   await api('/payments/webhooks/stub', 'POST', { paymentId: intent.paymentId });
   await api('/payments/webhooks/stub', 'POST', { paymentId: intent.paymentId });
 
-  await api('/driver/online', 'POST', { online: true }, input.driverToken);
   await api(
     '/driver/location',
     'PATCH',
     { lat: SANDTON.lat, lng: SANDTON.lng, accuracyM: 25 },
     input.driverToken
   );
+  await api('/driver/online', 'POST', { online: true }, input.driverToken);
+
+  const driverId = input.driverId || E2E_DRIVER_ID;
 
   await api(
     `/ops/bookings/${booking.id}/assign-driver`,
     'PATCH',
-    { driverId: input.driverId, reason: 'Staged wash assignment' },
+    { driverId, reason: 'Staged wash assignment' },
     input.opsToken
   );
 
@@ -103,7 +106,7 @@ export async function runGoldenWash(input: {
     customerToken: input.customerToken,
     driverToken: input.driverToken,
     opsToken: input.opsToken,
-    driverId: input.driverId
+    driverId: input.driverId || E2E_DRIVER_ID
   };
 }
 
