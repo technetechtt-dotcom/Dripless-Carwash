@@ -220,7 +220,13 @@ async function main() {
 
   await prisma.user.upsert({
     where: { email: 'ops@demo.dripless.local' },
-    update: {},
+    update: {
+      opsProfile: {
+        update: {
+          permissions: [...DEFAULT_OPS_PERMISSIONS]
+        }
+      }
+    },
     create: {
       email: 'ops@demo.dripless.local',
       passwordHash: demoPassword,
