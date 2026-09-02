@@ -266,11 +266,10 @@ jobs:
           npm run test:ozow-failures
 
       - name: Load smoke
-        working-directory: .
+        working-directory: backend-api
         run: |
-          npm --prefix backend-api ci
-          npx tsx backend-api/src/index.ts > /tmp/api.log 2>&1 &
           ready=0
+          npx tsx src/index.ts > /tmp/api.log 2>&1 &
           for i in $(seq 1 60); do
             if curl -sf http://127.0.0.1:4000/health >/dev/null; then
               ready=1
@@ -283,6 +282,7 @@ jobs:
             cat /tmp/api.log >&2
             exit 1
           fi
+          cd ..
           E2E_API_URL=http://127.0.0.1:4000 node tools/pilot/load-smoke.mjs
 
   e2e-cross-platform:
