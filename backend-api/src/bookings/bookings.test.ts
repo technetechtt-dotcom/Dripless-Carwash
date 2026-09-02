@@ -2,6 +2,7 @@ import { beforeAll, describe, expect, it } from 'vitest';
 import request from 'supertest';
 import { createApp } from '../app.js';
 import { prisma } from '../db/prisma.js';
+import { defaultBookingPayload, seedTestCarWashService, seedTestServiceArea } from '../test-helpers/pilot-area.js';
 
 const app = createApp();
 
@@ -10,24 +11,8 @@ describe('booking ownership and pricing', () => {
   let customerId = '';
 
   beforeAll(async () => {
-    await prisma.service.upsert({
-      where: { slug: 'car-wash' },
-      update: {},
-      create: {
-        slug: 'car-wash',
-        name: 'Car Wash',
-        options: {
-          create: [
-            {
-              slug: 'basic',
-              name: 'Basic Wash',
-              basePrice: 1599,
-              ecoPointsAward: 160
-            }
-          ]
-        }
-      }
-    });
+    await seedTestServiceArea();
+    await seedTestCarWashService();
 
     const email = `book_${Date.now()}@test.dripless.local`;
     const signup = await request(app).post('/auth/customer/signup').send({
@@ -50,16 +35,12 @@ describe('booking ownership and pricing', () => {
     const res = await request(app)
       .post('/bookings')
       .set('Authorization', `Bearer ${accessToken}`)
-      .send({
+      .send(defaultBookingPayload({
         customerId: otherId,
-        serviceSlug: 'car-wash',
-        optionSlug: 'basic',
-        pickupLocation: '123 Main Street Sandton',
-        pickupCoordinates: { lat: -26.1, lng: 28.05 },
         price: 0,
         basePrice: 0,
         discountAmount: 999
-      });
+      }));
 
     expect(res.status).toBe(201);
     expect(res.body.customerId).toBe(customerId);

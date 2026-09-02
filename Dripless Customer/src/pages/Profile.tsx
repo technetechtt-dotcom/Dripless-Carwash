@@ -1,4 +1,4 @@
-import React, { Children } from 'react';
+import React, { Children, useEffect, useState } from 'react';
 import {
   UserIcon,
   CreditCardIcon,
@@ -24,11 +24,30 @@ import { useBookings } from '../contexts/BookingContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { ROUTES } from '../utils/routes';
 import { formatCurrency } from '../utils/currency';
+import { notificationApi } from '@shared/api';
 const Profile = () => {
   const navigate = useNavigate();
   const { user, logout } = useAuth();
   const { walletBalance } = useBookings();
   const { isDark, toggleTheme } = useTheme();
+  const [unreadCount, setUnreadCount] = useState(0);
+
+  useEffect(() => {
+    if (!user?.id) return;
+    let cancelled = false;
+    const loadUnread = async () => {
+      try {
+        const count = await notificationApi.unreadCount('customer', user.id);
+        if (!cancelled) setUnreadCount(count);
+      } catch {
+        if (!cancelled) setUnreadCount(0);
+      }
+    };
+    void loadUnread();
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.id]);
   const handleLogout = () => {
     if (window.confirm('Are you sure you want to log out?')) {
       logout();
@@ -318,7 +337,14 @@ const Profile = () => {
                   Notifications
                 </span>
               </div>
-              <ChevronRightIcon size={18} className="text-slate-400" />
+              <div className="flex items-center gap-2">
+                {unreadCount > 0 && (
+                  <span className="min-w-[20px] h-5 px-1.5 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center">
+                    {unreadCount > 9 ? '9+' : unreadCount}
+                  </span>
+                )}
+                <ChevronRightIcon size={18} className="text-slate-400" />
+              </div>
             </motion.button>
           </div>
         </motion.div>

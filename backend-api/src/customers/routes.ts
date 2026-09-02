@@ -6,6 +6,7 @@ import { validate } from '../middleware/validate.js';
 import { HttpError } from '../middleware/error.js';
 import { resolveCoordinatesAsync } from '../geo/geocode.js';
 import { mapCustomerProfile } from '../dto/mappers.js';
+import { fromCents } from '../money.js';
 
 export const customersRouter = Router();
 
@@ -303,3 +304,24 @@ customersRouter.delete(
     }
   }
 );
+
+customersRouter.get('/me/referrals/summary', authRequired, roleRequired(['customer']), async (req, res, next) => {
+  try {
+    const row = await prisma.customerProfile.findUnique({
+      where: { id: req.auth!.profileId },
+      include: { user: true }
+    });
+    if (!row?.user) throw new HttpError(404, 'Profile not found');
+    const referrals = await prisma.referral.findMany({
+      where: { referrerId: row.user.id },
+      select: { rewardCents: true }
+    });
+    res.json({
+      referralCode: row.referralCode ?? null,
+      invitesCount: referrals.length,
+      rewardEarnedZar: fromCents(referrals.reduce((sum, referral) => sum + referral.rewardCents, 0))
+    });
+  } catch (error) {
+    next(error);
+  }
+});

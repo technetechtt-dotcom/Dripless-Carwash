@@ -136,6 +136,24 @@ const readRemoteError = async (response: Response): Promise<string> => {
 };
 
 let refreshInFlight: Promise<boolean> | null = null;
+const authSessionLostListeners = new Set<() => void>();
+
+const notifyAuthSessionLost = () => {
+  for (const listener of authSessionLostListeners) {
+    try {
+      listener();
+    } catch {
+      /* ignore listener errors */
+    }
+  }
+};
+
+export const onAuthSessionLost = (listener: () => void) => {
+  authSessionLostListeners.add(listener);
+  return () => {
+    authSessionLostListeners.delete(listener);
+  };
+};
 
 const rotateRefreshSession = async (): Promise<boolean> => {
   if (refreshInFlight) return refreshInFlight;
@@ -155,6 +173,7 @@ const rotateRefreshSession = async (): Promise<boolean> => {
       });
       if (!response.ok) {
         clearSession();
+        notifyAuthSessionLost();
         return false;
       }
       const body = (await response.json()) as { session: AuthSession };
@@ -162,6 +181,7 @@ const rotateRefreshSession = async (): Promise<boolean> => {
       return true;
     } catch {
       clearSession();
+      notifyAuthSessionLost();
       return false;
     } finally {
       refreshInFlight = null;
@@ -190,8 +210,9 @@ const requestApi = async <T>(
   if (options.body !== undefined) {
     headers['Content-Type'] = 'application/json';
   }
-  if (options.token) {
-    headers.Authorization = `Bearer ${options.token}`;
+  const token = await resolveAuthToken(options.token);
+  if (token) {
+    headers.Authorization = `Bearer ${token}`;
   }
 
   const response = await fetch(`${baseUrl}${path}`, {
@@ -215,6 +236,9 @@ const requestApi = async <T>(
         retryOnAuth: false
       });
     }
+    if (!getActiveSession()) {
+      notifyAuthSessionLost();
+    }
   }
 
   if (!response.ok) {
@@ -231,11 +255,18 @@ const requestApi = async <T>(
 const getBearerToken = (): string | undefined => {
   const session = getActiveSession();
   if (!session) return undefined;
-  if (!isAccessTokenFresh()) {
-    // Fire-and-forget rotation; callers that hit 401 will retry via requestApi
-    void rotateRefreshSession();
+  return session.tokens.accessToken;
+};
+
+const resolveAuthToken = async (explicit?: string): Promise<string | undefined> => {
+  const session = getActiveSession();
+  if (!session) return undefined;
+  if (explicit && isAccessTokenFresh()) return explicit;
+  if (isAccessTokenFresh()) return session.tokens.accessToken;
+  if (await rotateRefreshSession()) {
+    return getActiveSession()?.tokens.accessToken;
   }
-  return getActiveSession()?.tokens.accessToken ?? session.tokens.accessToken;
+  return getActiveSession()?.tokens.accessToken ?? explicit;
 };
 
 const downloadApiFile = async (path: string, filename: string, retried = false) => {
@@ -883,8 +914,17 @@ export const authApi = {
     return getOpsAdminProfile();
   },
 
+  hasValidSession(): boolean {
+    return Boolean(getActiveSession());
+  },
+
+  isAccessTokenFresh(): boolean {
+    return isAccessTokenFresh();
+  },
+
   async refreshSession(): Promise<boolean> {
     if (!hasRemoteApi()) return Boolean(getActiveSession());
+    if (isAccessTokenFresh()) return true;
     return rotateRefreshSession();
   },
 
@@ -2539,7 +2579,11 @@ export const notificationApi = {
       method: 'POST',
       token: getBearerToken(),
       body: { token, platform }
-    })
+    }),
+  async unreadCount(role: AppRole, userId: string) {
+    const rows = await notificationApi.listNotifications(role, userId);
+    return rows.filter((row) => !row.read).length;
+  }
 };
 
 export const specialsApi = {
@@ -2659,8 +2703,60 @@ export const paymentsApi = {
 
 export const catalogApi = {
   async services() {
-    return requestApi<unknown[]>('/catalog/services', { token: getBearerToken() });
+    return requestApi<CatalogServiceRecord[]>('/catalog/services', { token: getBearerToken() });
   }
+};
+
+export type ImpactSummary = {
+  washes: number;
+  waterUsedLitres: number;
+  waterSavedLitres: number;
+  co2KgSaved: number;
+  plasticKgReduced: number;
+  projectedCo2KgYear: number;
+  ecoStreakDays: number;
+  ecoPoints: number;
+  methodology: string;
+};
+
+export const impactApi = {
+  async summary() {
+    return requestApi<ImpactSummary>('/impact/summary', { token: getBearerToken() });
+  },
+  async trends() {
+    return requestApi<{ months: Array<{ name: string; co2: number; waterSavedLitres: number; washes: number }> }>(
+      '/impact/trends',
+      { token: getBearerToken() }
+    );
+  }
+};
+
+export type DriverTodayStats = {
+  jobsCompletedToday: number;
+  jobsActiveToday: number;
+  jobsToday: number;
+  onlineHoursToday: number;
+  earningsTodayZar: number;
+};
+
+export type DriverWeekStats = {
+  jobsWeek: number;
+  earningsWeekZar: number;
+};
+
+export const driverStatsApi = {
+  async today() {
+    return requestApi<DriverTodayStats>('/driver/stats/today', { token: getBearerToken() });
+  },
+  async week() {
+    return requestApi<DriverWeekStats>('/driver/stats/week', { token: getBearerToken() });
+  }
+};
+
+type CatalogServiceRecord = {
+  slug: string;
+  name: string;
+  description?: string | null;
 };
 
 export const accountApi = {
@@ -2810,7 +2906,12 @@ export const customerAccountApi = {
   updateAddress: (id: string, body: Record<string, unknown>) =>
     requestApi<Record<string, unknown>>(`/customers/me/addresses/${encodeURIComponent(id)}`, { method: 'PATCH', token: getBearerToken(), body }),
   deleteAddress: (id: string) =>
-    requestApi<void>(`/customers/me/addresses/${encodeURIComponent(id)}`, { method: 'DELETE', token: getBearerToken() })
+    requestApi<void>(`/customers/me/addresses/${encodeURIComponent(id)}`, { method: 'DELETE', token: getBearerToken() }),
+  referralsSummary: () =>
+    requestApi<{ referralCode: string | null; invitesCount: number; rewardEarnedZar: number }>(
+      '/customers/me/referrals/summary',
+      { token: getBearerToken() }
+    )
 };
 
 export const driverOperationsApi = {
@@ -2922,7 +3023,7 @@ export function subscribePlatformEvents(
     while (!stopped) {
       try {
         const baseUrl = getApiBaseUrl();
-        const token = getBearerToken();
+        const token = await resolveAuthToken();
         if (!baseUrl || !token) return;
         const response = await fetch(`${baseUrl}/events/stream`, {
           headers: {

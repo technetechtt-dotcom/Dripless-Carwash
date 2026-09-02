@@ -1,6 +1,6 @@
 import { createApp } from './app.js';
 import { assertProductionConfiguration, env } from './config/env.js';
-import { prisma, withConnectionRetry } from './db/prisma.js';
+import { connectDatabase, prisma, prismaClient } from './db/prisma.js';
 import { hashPassword } from './auth/password.js';
 import { DEFAULT_OPS_PERMISSIONS } from './auth/permissions.js';
 import { ensureScheduledJobs, registerJobHandlers } from './jobs/register.js';
@@ -35,10 +35,6 @@ async function maybeBootstrapFromEnv() {
   console.log(`Bootstrapped ops admin from env: ${email}`);
 }
 
-async function connectDatabase(retries = 5) {
-  await withConnectionRetry(() => prisma.$connect(), retries);
-}
-
 async function main() {
   assertProductionConfiguration();
   await connectDatabase();
@@ -56,6 +52,6 @@ async function main() {
 
 main().catch(async (error) => {
   console.error(error);
-  await prisma.$disconnect();
+  await prismaClient.$disconnect();
   process.exit(1);
 });

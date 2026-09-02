@@ -148,10 +148,11 @@ export function mapCustomerProfile(row: {
   status: string;
   walletBalance: number;
   ecoPoints: number;
+  referralCode?: string | null;
   rating?: number;
   createdAt: Date;
   updatedAt: Date;
-  user?: { email: string } | null;
+  user?: { email: string; id?: string } | null;
 }) {
   return {
     id: row.id,
@@ -161,6 +162,7 @@ export function mapCustomerProfile(row: {
     walletBalance: fromCents(row.walletBalance),
     walletBalanceCents: row.walletBalance,
     ecoPoints: row.ecoPoints,
+    referralCode: row.referralCode ?? undefined,
     rating: typeof row.rating === 'number' ? row.rating : 5,
     status: row.status,
     createdAt: row.createdAt.toISOString(),

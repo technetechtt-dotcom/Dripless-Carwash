@@ -1,5 +1,5 @@
 import React, { Suspense, lazy } from 'react';
-import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { Toaster } from 'sonner';
 import { Loader2Icon } from 'lucide-react';
 import { AuthProvider } from './contexts/AuthContext';
@@ -22,8 +22,6 @@ const Services = lazy(() => import('./pages/Services'));
 const BookRide = lazy(() => import('./pages/BookRide'));
 const ServiceBooking = lazy(() => import('./pages/ServiceBooking'));
 const BookingConfirmation = lazy(() => import('./pages/BookingConfirmation'));
-const RideDetails = lazy(() => import('./pages/RideDetails'));
-const DeliveryDetails = lazy(() => import('./pages/DeliveryDetails'));
 const Tracking = lazy(() => import('./pages/Tracking'));
 const Rewards = lazy(() => import('./pages/Rewards'));
 const Profile = lazy(() => import('./pages/Profile'));
@@ -85,10 +83,8 @@ export function App() {
                         path="/booking-confirmation"
                         element={<BookingConfirmation />} />
 
-                      <Route path="/ride-details" element={<RideDetails />} />
-                      <Route
-                        path="/delivery-details"
-                        element={<DeliveryDetails />} />
+                      <Route path="/ride-details" element={<Navigate to="/services" replace />} />
+                      <Route path="/delivery-details" element={<Navigate to="/services" replace />} />
 
                       <Route path="/tracking" element={<Tracking />} />
                       <Route path="/rewards" element={<Rewards />} />

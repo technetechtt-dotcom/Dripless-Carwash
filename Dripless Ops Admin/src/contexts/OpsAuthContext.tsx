@@ -6,7 +6,7 @@ import {
   useState,
   type ReactNode
 } from 'react';
-import { authApi, mfaApi, passkeyApi } from '@shared/api';
+import { authApi, mfaApi, onAuthSessionLost, passkeyApi } from '@shared/api';
 import { startAuthentication, startRegistration } from '@simplewebauthn/browser';
 import type {
   PublicKeyCredentialCreationOptionsJSON,
@@ -41,11 +41,37 @@ export const OpsAuthProvider = ({ children }: { children: ReactNode }) => {
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    const activeAdmin = authApi.getCurrentOpsAdminProfile();
-    if (activeAdmin) {
-      setAdmin(activeAdmin);
-    }
-    setIsLoading(false);
+    let cancelled = false;
+
+    const bootstrap = async () => {
+      const activeAdmin = authApi.getCurrentOpsAdminProfile();
+      if (!activeAdmin) {
+        if (!cancelled) setIsLoading(false);
+        return;
+      }
+      if (!authApi.isAccessTokenFresh()) {
+        await authApi.refreshSession();
+      }
+      if (cancelled) return;
+      const profile = authApi.getCurrentOpsAdminProfile();
+      if (!profile) {
+        setAdmin(null);
+      } else {
+        setAdmin(profile);
+      }
+      setIsLoading(false);
+    };
+
+    void bootstrap();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    return onAuthSessionLost(() => {
+      setAdmin(null);
+    });
   }, []);
 
   const login = async (email: string, password: string, mfaCode?: string, mfaToken?: string) => {

@@ -30,7 +30,7 @@ export default function ForgotPassword() {
       {sent ? <div className="rounded-xl bg-eco-50 text-eco-800 p-4">Check your inbox and spam folder for the reset link.</div> :
         <form onSubmit={submit} className="space-y-4">
           <input required type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@example.com" className="w-full p-3 rounded-xl border border-slate-200 dark:border-slate-700 dark:bg-slate-800 dark:text-white"/>
-          <button disabled={loading} className="btn-primary w-full py-3 disabled:opacity-60">{loading ? 'Sending…' : 'Send reset link'}</button>
+          <button type="submit" disabled={loading} className="btn-primary w-full py-3 disabled:opacity-60">{loading ? 'Sending…' : 'Send reset link'}</button>
         </form>}
     </section>
   </main>;
