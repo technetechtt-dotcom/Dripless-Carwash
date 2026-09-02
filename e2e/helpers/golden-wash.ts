@@ -54,19 +54,33 @@ export async function runGoldenWash(input: {
   await api(
     '/driver/location',
     'PATCH',
-    { lat: SANDTON.lat, lng: SANDTON.lng, accuracyM: 25 },
+    {
+      lat: SANDTON.lat,
+      lng: SANDTON.lng,
+      accuracyM: 25,
+      recordedAt: new Date().toISOString()
+    },
     input.driverToken
   );
-  await api('/driver/online', 'POST', { online: true }, input.driverToken);
+
+  const bookingState = await api<{ driverId?: string | null }>(
+    `/bookings/${booking.id}`,
+    'GET',
+    undefined,
+    input.customerToken
+  );
 
   const driverId = input.driverId || E2E_DRIVER_ID;
 
-  await api(
-    `/ops/bookings/${booking.id}/assign-driver`,
-    'PATCH',
-    { driverId, reason: 'Staged wash assignment' },
-    input.opsToken
-  );
+  if (!bookingState.driverId) {
+    await api('/driver/online', 'POST', { online: true }, input.driverToken);
+    await api(
+      `/ops/bookings/${booking.id}/assign-driver`,
+      'PATCH',
+      { driverId, reason: 'Staged wash assignment' },
+      input.opsToken
+    );
+  }
 
   for (const status of ['EN_ROUTE', 'ARRIVED', 'IN_PROGRESS'] as const) {
     await api(`/bookings/${booking.id}/status`, 'PATCH', { status }, input.driverToken);
