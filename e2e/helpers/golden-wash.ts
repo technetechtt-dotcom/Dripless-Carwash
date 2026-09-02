@@ -3,6 +3,22 @@ import { E2E_DRIVER_ID } from './credentials';
 
 const SANDTON = { lat: -26.1076, lng: 28.0567 };
 
+async function releaseDemoDriverJobs(input: { opsToken: string; customerToken: string }) {
+  const bookings = await api<Array<{ id: string; driverId?: string | null; status: string }>>(
+    '/ops/bookings',
+    'GET',
+    undefined,
+    input.opsToken
+  );
+  for (const row of bookings) {
+    if (row.driverId !== E2E_DRIVER_ID) continue;
+    if (row.status === 'COMPLETED' || row.status === 'CANCELLED') continue;
+    await api(`/bookings/${row.id}/cancel`, 'POST', { reason: 'E2E driver release' }, input.customerToken).catch(
+      () => undefined
+    );
+  }
+}
+
 export type GoldenWashResult = {
   bookingId: string;
   paymentId: string;

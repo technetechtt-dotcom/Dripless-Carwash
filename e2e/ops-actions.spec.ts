@@ -74,6 +74,8 @@ test.describe('Ops actions and RBAC', () => {
       body: JSON.stringify({ driverId, reason: 'Dispatcher RBAC test' })
     });
     expect(assign.status).toBeLessThan(300);
+
+    await api(`/bookings/${booking.id}/cancel`, 'POST', { reason: 'Dispatcher RBAC cleanup' }, customerToken);
   });
 
   test('support reads customers; compliance blocked from finance', async () => {
