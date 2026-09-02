@@ -136,6 +136,24 @@ const readRemoteError = async (response: Response): Promise<string> => {
 };
 
 let refreshInFlight: Promise<boolean> | null = null;
+const authSessionLostListeners = new Set<() => void>();
+
+const notifyAuthSessionLost = () => {
+  for (const listener of authSessionLostListeners) {
+    try {
+      listener();
+    } catch {
+      /* ignore listener errors */
+    }
+  }
+};
+
+export const onAuthSessionLost = (listener: () => void) => {
+  authSessionLostListeners.add(listener);
+  return () => {
+    authSessionLostListeners.delete(listener);
+  };
+};
 
 const rotateRefreshSession = async (): Promise<boolean> => {
   if (refreshInFlight) return refreshInFlight;
@@ -155,6 +173,7 @@ const rotateRefreshSession = async (): Promise<boolean> => {
       });
       if (!response.ok) {
         clearSession();
+        notifyAuthSessionLost();
         return false;
       }
       const body = (await response.json()) as { session: AuthSession };
@@ -162,6 +181,7 @@ const rotateRefreshSession = async (): Promise<boolean> => {
       return true;
     } catch {
       clearSession();
+      notifyAuthSessionLost();
       return false;
     } finally {
       refreshInFlight = null;
@@ -190,8 +210,9 @@ const requestApi = async <T>(
   if (options.body !== undefined) {
     headers['Content-Type'] = 'application/json';
   }
-  if (options.token) {
-    headers.Authorization = `Bearer ${options.token}`;
+  const token = await resolveAuthToken(options.token);
+  if (token) {
+    headers.Authorization = `Bearer ${token}`;
   }
 
   const response = await fetch(`${baseUrl}${path}`, {
@@ -215,6 +236,9 @@ const requestApi = async <T>(
         retryOnAuth: false
       });
     }
+    if (!getActiveSession()) {
+      notifyAuthSessionLost();
+    }
   }
 
   if (!response.ok) {
@@ -231,11 +255,18 @@ const requestApi = async <T>(
 const getBearerToken = (): string | undefined => {
   const session = getActiveSession();
   if (!session) return undefined;
-  if (!isAccessTokenFresh()) {
-    // Fire-and-forget rotation; callers that hit 401 will retry via requestApi
-    void rotateRefreshSession();
+  return session.tokens.accessToken;
+};
+
+const resolveAuthToken = async (explicit?: string): Promise<string | undefined> => {
+  const session = getActiveSession();
+  if (!session) return undefined;
+  if (explicit && isAccessTokenFresh()) return explicit;
+  if (isAccessTokenFresh()) return session.tokens.accessToken;
+  if (await rotateRefreshSession()) {
+    return getActiveSession()?.tokens.accessToken;
   }
-  return getActiveSession()?.tokens.accessToken ?? session.tokens.accessToken;
+  return getActiveSession()?.tokens.accessToken ?? explicit;
 };
 
 const downloadApiFile = async (path: string, filename: string, retried = false) => {
@@ -883,8 +914,17 @@ export const authApi = {
     return getOpsAdminProfile();
   },
 
+  hasValidSession(): boolean {
+    return Boolean(getActiveSession());
+  },
+
+  isAccessTokenFresh(): boolean {
+    return isAccessTokenFresh();
+  },
+
   async refreshSession(): Promise<boolean> {
     if (!hasRemoteApi()) return Boolean(getActiveSession());
+    if (isAccessTokenFresh()) return true;
     return rotateRefreshSession();
   },
 
@@ -2922,7 +2962,7 @@ export function subscribePlatformEvents(
     while (!stopped) {
       try {
         const baseUrl = getApiBaseUrl();
-        const token = getBearerToken();
+        const token = await resolveAuthToken();
         if (!baseUrl || !token) return;
         const response = await fetch(`${baseUrl}/events/stream`, {
           headers: {

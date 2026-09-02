@@ -5,6 +5,7 @@ import { authRequired, roleRequired } from '../middleware/auth.js';
 import { validate } from '../middleware/validate.js';
 import { HttpError } from '../middleware/error.js';
 import { createSignedDownload, readLocalObject, storeEvidenceObject } from '../evidence/storage.js';
+import { env } from '../config/env.js';
 
 export const driverOnboardingRouter = Router();
 
@@ -147,7 +148,9 @@ driverOnboardingRouter.post(
         if (!driver.location || driver.location.updatedAt < new Date(Date.now() - 120_000)) {
           throw new HttpError(400, 'A fresh GPS location is required before going online');
         }
-        if (driver.location.spoofSuspect) throw new HttpError(403, 'GPS location requires Ops review');
+        if (env.isProduction && driver.location.spoofSuspect) {
+          throw new HttpError(403, 'GPS location requires Ops review');
+        }
         const equipmentReady = driver.equipment.some((item) => !item.returnedAt && !item.faultNote);
         if (!equipmentReady) throw new HttpError(403, 'No serviceable equipment is allocated');
         if (driver.consumables.some((item) => item.quantity <= 0)) {

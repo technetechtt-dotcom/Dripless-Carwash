@@ -34,6 +34,71 @@ async function upsertService(
   }
 }
 
+async function ensureDemoDriverCompliance(driverId: string, reviewerId: string) {
+  const expiresAt = new Date(Date.now() + 365 * 86400000);
+  const reviewedAt = new Date();
+  for (const kind of ['SA_ID', 'DRIVERS_LICENCE', 'VEHICLE_REGISTRATION'] as const) {
+    const existing = await prisma.driverDocument.findFirst({ where: { driverId, kind } });
+    if (existing) {
+      await prisma.driverDocument.update({
+        where: { id: existing.id },
+        data: {
+          status: 'APPROVED',
+          expiresAt,
+          reviewedAt,
+          reviewedById: reviewerId,
+          rejectionReason: null
+        }
+      });
+    } else {
+      await prisma.driverDocument.create({
+        data: {
+          driverId,
+          kind,
+          storageKey: `demo/${driverId}/${kind.toLowerCase()}.pdf`,
+          mimeType: 'application/pdf',
+          status: 'APPROVED',
+          expiresAt,
+          reviewedAt,
+          reviewedById: reviewerId
+        }
+      });
+    }
+  }
+
+  const equipment = await prisma.driverEquipment.findFirst({
+    where: { driverId, returnedAt: null, faultNote: null }
+  });
+  if (!equipment) {
+    await prisma.driverEquipment.create({
+      data: {
+        driverId,
+        name: 'Demo pressure kit',
+        serial: 'DEMO-EQ-001'
+      }
+    });
+  }
+
+  for (const item of [
+    { sku: 'shampoo', name: 'Eco shampoo', quantity: 10 },
+    { sku: 'towels', name: 'Microfiber towels', quantity: 20 }
+  ]) {
+    await prisma.driverConsumable.upsert({
+      where: { driverId_sku: { driverId, sku: item.sku } },
+      update: { quantity: item.quantity, name: item.name, threshold: 2 },
+      create: { driverId, ...item, threshold: 2 }
+    });
+  }
+
+  await prisma.driverProfile.update({
+    where: { id: driverId },
+    data: {
+      status: 'ACTIVE',
+      verificationStatus: 'VERIFIED'
+    }
+  });
+}
+
 async function main() {
   if (process.env.DEMO_MODE !== 'true') {
     console.log('Skipping seed: DEMO_MODE is not true');
@@ -127,13 +192,14 @@ async function main() {
 
   await prisma.driverLocation.upsert({
     where: { driverId: 'driver_demo_001' },
-    update: { lat: -26.1076, lng: 28.0567 },
+    update: { lat: -26.1076, lng: 28.0567, spoofSuspect: false },
     create: {
       driverId: 'driver_demo_001',
       lat: -26.1076,
       lng: 28.0567,
       heading: 90,
-      speedKph: 0
+      speedKph: 0,
+      spoofSuspect: false
     }
   });
 
@@ -155,6 +221,8 @@ async function main() {
       }
     }
   });
+
+  await ensureDemoDriverCompliance('driver_demo_001', 'ops_demo_001');
 
   await prisma.promotion.upsert({
     where: { promoCode: 'ECO10' },
