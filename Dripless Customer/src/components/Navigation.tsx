@@ -139,6 +139,22 @@ const Navigation = () => {
       icon: SparklesIcon
     }]
 
+  },
+  {
+    id: 'relocation',
+    title: 'Relocation',
+    subtitle: 'Home & office moves',
+    icon: CarIcon,
+    gradient: 'from-orange-500 to-rose-600',
+    iconBg: 'bg-orange-100 dark:bg-orange-900/30',
+    iconColor: 'text-orange-600 dark:text-orange-400',
+    services: [
+    {
+      name: 'Relocation Transport',
+      route: '/booking/relocation-transport',
+      icon: CarIcon
+    }]
+
   }];
 
   const handleServiceSelect = (route: string) => {

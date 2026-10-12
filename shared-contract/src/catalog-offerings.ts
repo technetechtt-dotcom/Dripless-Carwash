@@ -73,6 +73,12 @@ export const QUICK_SERVICE_PRESENTATION: Record<
     description: 'Walls to couches',
     gradient: 'bg-gradient-to-br from-cyan-500 to-slate-700',
     icon: 'home'
+  },
+  'relocation-transport': {
+    title: 'Relocation Transport',
+    description: 'Home & office moves',
+    gradient: 'bg-gradient-to-br from-orange-400 to-rose-600',
+    icon: 'home'
   }
 };
 

@@ -86,6 +86,13 @@ export const customerServiceOfferings: CustomerServiceOffering[] = [
     serviceType: 'HOME_SERVICE'
   },
   {
+    id: 'relocation-transport',
+    title: 'Relocation Transport',
+    description: 'Transport of home and office items and furniture for relocation.',
+    category: 'MOBILITY_DELIVERY',
+    serviceType: 'PARCEL'
+  },
+  {
     id: 'ceramic-coating',
     title: 'Ceramic Coating',
     description: 'Long-lasting paint protection package.',

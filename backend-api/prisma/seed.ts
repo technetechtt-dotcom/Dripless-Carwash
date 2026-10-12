@@ -172,6 +172,19 @@ async function main() {
     { slug: 'chairs', name: 'Chairs (Per Chair)', basePrice: 8000, ecoPointsAward: 80 },
     { slug: 'couches', name: 'Couches', basePrice: 35000, ecoPointsAward: 350 }
   ]);
+  await upsertService('relocation-transport', 'Relocation Transport', [
+    { slug: 'home-single-item', name: 'Home — Single Furniture Item', basePrice: 45000, ecoPointsAward: 450 },
+    { slug: 'home-items-load', name: 'Home — Items (Bakkie Load)', basePrice: 85000, ecoPointsAward: 850 },
+    { slug: 'home-studio', name: 'Home Relocation — Studio / Bachelor', basePrice: 180000, ecoPointsAward: 1800 },
+    { slug: 'home-1-bedroom', name: 'Home Relocation — 1 Bedroom', basePrice: 280000, ecoPointsAward: 2800 },
+    { slug: 'home-2-bedroom', name: 'Home Relocation — 2 Bedroom', basePrice: 420000, ecoPointsAward: 4200 },
+    { slug: 'home-3-bedroom', name: 'Home Relocation — 3 Bedroom+', basePrice: 650000, ecoPointsAward: 6500 },
+    { slug: 'office-single-item', name: 'Office — Single Furniture Item', basePrice: 55000, ecoPointsAward: 550 },
+    { slug: 'office-items-load', name: 'Office — Items (Bakkie Load)', basePrice: 95000, ecoPointsAward: 950 },
+    { slug: 'office-small', name: 'Office Relocation — Small Suite', basePrice: 350000, ecoPointsAward: 3500 },
+    { slug: 'office-medium', name: 'Office Relocation — Medium Suite', basePrice: 650000, ecoPointsAward: 6500 },
+    { slug: 'office-full', name: 'Office Relocation — Full Floor', basePrice: 1200000, ecoPointsAward: 12000 }
+  ]);
 
   const demoPassword = await hashPassword('DemoPass123!');
 

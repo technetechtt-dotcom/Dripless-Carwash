@@ -43,6 +43,7 @@ const iconForOffering = (id: string) => {
   if (id.includes('upholstery') || id.includes('couch')) return <SofaIcon size={20} className="text-white" />;
   if (id.includes('spring')) return <HomeIcon size={20} className="text-white" />;
   if (id.includes('carpet')) return <DropletIcon size={20} className="text-white" />;
+  if (id.includes('relocation')) return <CarIcon size={20} className="text-white" />;
   if (id.includes('corporate') || id.includes('office')) return <HomeIcon size={20} className="text-white" />;
   if (id === 'dripless-features') return <SparklesIcon size={20} className="text-white" />;
   return <SparklesIcon size={20} className="text-white" />;
@@ -81,11 +82,14 @@ const Services = () => {
       'carpet-cleaning',
       'window-solar-clean',
       'corporate-office-cleaning',
-      'office-deep-clean'
+      'office-deep-clean',
+      'relocation-transport'
     ]);
     return customerServiceOfferings.filter((offering) => {
-      if (offering.category === 'MOBILITY_DELIVERY') return false;
       if (offering.category === 'SPECIALIZED') return false;
+      if (offering.category === 'MOBILITY_DELIVERY') {
+        return offering.id === 'relocation-transport' && activeSlugs.has(offering.id);
+      }
       if (offering.id === 'fleet-wash') return activeSlugs.has('car-wash');
       if (offering.id === 'car-wash' || offering.id === 'window-solar-clean') {
         return activeSlugs.has(offering.id);
@@ -134,6 +138,7 @@ const Services = () => {
               <h2 className="text-lg font-bold text-slate-800 dark:text-slate-100 px-1 flex items-center">
                 {category === 'HOME_SERVICE' && <HomeIcon size={18} className="text-blue-500 mr-2" />}
                 {category === 'COMMERCIAL' && <HomeIcon size={18} className="text-slate-500 mr-2" />}
+                {category === 'MOBILITY_DELIVERY' && <CarIcon size={18} className="text-orange-500 mr-2" />}
                 {customerServiceCategoryLabels[category as keyof typeof customerServiceCategoryLabels]}
               </h2>
               <div className="space-y-3">

@@ -48,6 +48,14 @@ const SERVICE_ALIASES: Record<string, string> = {
   'office deep clean': 'office-deep-clean',
   'office deep cleaning': 'office-deep-clean',
   'deep cleaning solutions': 'office-deep-clean',
+  'relocation-transport': 'relocation-transport',
+  'relocation transport': 'relocation-transport',
+  relocation: 'relocation-transport',
+  'furniture transport': 'relocation-transport',
+  'furniture relocation': 'relocation-transport',
+  'home relocation': 'relocation-transport',
+  'office relocation': 'relocation-transport',
+  moving: 'relocation-transport',
   WASH: 'car-wash'
 };
 
@@ -135,7 +143,22 @@ const OPTION_ALIASES: Record<string, string> = {
   chairs: 'chairs',
   chair: 'chairs',
   couches: 'couches',
-  'office couch': 'couches'
+  'office couch': 'couches',
+  'home-single-item': 'home-single-item',
+  'home single item': 'home-single-item',
+  'home-items-load': 'home-items-load',
+  'home items': 'home-items-load',
+  'home-studio': 'home-studio',
+  'home-1-bedroom': 'home-1-bedroom',
+  'home-2-bedroom': 'home-2-bedroom',
+  'home-3-bedroom': 'home-3-bedroom',
+  'office-single-item': 'office-single-item',
+  'office single item': 'office-single-item',
+  'office-items-load': 'office-items-load',
+  'office items': 'office-items-load',
+  'office-small': 'office-small',
+  'office-medium': 'office-medium',
+  'office-full': 'office-full'
 };
 
 export async function resolveCatalogueRef(input: {
@@ -220,7 +243,8 @@ const SERVICE_SCOPE_MAP: Record<string, string> = {
   'spring-deep-clean': 'HOME_SERVICE',
   'carpet-cleaning': 'HOME_SERVICE',
   'corporate-office-cleaning': 'HOME_SERVICE',
-  'office-deep-clean': 'HOME_SERVICE'
+  'office-deep-clean': 'HOME_SERVICE',
+  'relocation-transport': 'DELIVERY'
 };
 
 const SIZE_MULTIPLIER: Record<string, number> = {

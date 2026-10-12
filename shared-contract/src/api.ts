@@ -484,7 +484,15 @@ const logActivity = (
 const inferServiceType = (serviceName: string): ServiceType => {
   const normalized = serviceName.toLowerCase();
   if (normalized.includes('ride') || normalized.includes('taxi')) return 'RIDE';
-  if (normalized.includes('parcel') || normalized.includes('delivery')) return 'PARCEL';
+  if (
+    normalized.includes('parcel') ||
+    normalized.includes('delivery') ||
+    normalized.includes('relocation') ||
+    normalized.includes('furniture transport') ||
+    normalized.includes('moving')
+  ) {
+    return 'PARCEL';
+  }
   if (normalized.includes('wash')) return 'WASH';
   return 'HOME_SERVICE';
 };

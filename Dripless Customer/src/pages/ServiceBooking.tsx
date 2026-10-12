@@ -366,6 +366,88 @@ const serviceTypes = {
       }
     ]
   },
+  'relocation-transport': {
+    title: 'Relocation Transport',
+    options: [
+      {
+        id: 'home-single-item',
+        name: 'Home — Single Furniture Item',
+        description: 'Transport one furniture item between home addresses.',
+        price: 450,
+        eco: 4
+      },
+      {
+        id: 'home-items-load',
+        name: 'Home — Items (Bakkie Load)',
+        description: 'Bakkie load of household items and boxes.',
+        price: 850,
+        eco: 5
+      },
+      {
+        id: 'home-studio',
+        name: 'Home Relocation — Studio / Bachelor',
+        description: 'Studio or bachelor home move with furniture.',
+        price: 1800,
+        eco: 5
+      },
+      {
+        id: 'home-1-bedroom',
+        name: 'Home Relocation — 1 Bedroom',
+        description: '1-bedroom home furniture and items relocation.',
+        price: 2800,
+        eco: 5
+      },
+      {
+        id: 'home-2-bedroom',
+        name: 'Home Relocation — 2 Bedroom',
+        description: '2-bedroom home furniture and items relocation.',
+        price: 4200,
+        eco: 5
+      },
+      {
+        id: 'home-3-bedroom',
+        name: 'Home Relocation — 3 Bedroom+',
+        description: '3-bedroom or larger home furniture and items relocation.',
+        price: 6500,
+        eco: 5
+      },
+      {
+        id: 'office-single-item',
+        name: 'Office — Single Furniture Item',
+        description: 'Transport one office furniture item.',
+        price: 550,
+        eco: 4
+      },
+      {
+        id: 'office-items-load',
+        name: 'Office — Items (Bakkie Load)',
+        description: 'Bakkie load of office equipment and items.',
+        price: 950,
+        eco: 5
+      },
+      {
+        id: 'office-small',
+        name: 'Office Relocation — Small Suite',
+        description: 'Small office suite furniture and equipment move.',
+        price: 3500,
+        eco: 5
+      },
+      {
+        id: 'office-medium',
+        name: 'Office Relocation — Medium Suite',
+        description: 'Medium office suite furniture and equipment move.',
+        price: 6500,
+        eco: 5
+      },
+      {
+        id: 'office-full',
+        name: 'Office Relocation — Full Floor',
+        description: 'Full-floor office furniture and equipment relocation.',
+        price: 12000,
+        eco: 5
+      }
+    ]
+  },
   taxi: {
     title: 'Eco Taxi',
     options: [
@@ -445,7 +527,8 @@ const ServiceBooking = () => {
       'spring-deep-clean',
       'carpet-cleaning',
       'corporate-office-cleaning',
-      'office-deep-clean'
+      'office-deep-clean',
+      'relocation-transport'
     ]);
     if (service && !isLaunchVisibleService(service) && !bookableExtraSlugs.has(service)) {
       navigate(ROUTES.SERVICES, { replace: true });
@@ -527,7 +610,7 @@ const ServiceBooking = () => {
   }, []);
   useEffect(() => {
     if (!serviceData) return;
-    if (service === 'taxi' || service === 'delivery') {
+    if (service === 'taxi' || service === 'delivery' || service === 'relocation-transport') {
       if (pickupAddress && destinationAddress && selectedOption) {
         const option =
           serviceData.options.find((item) => item.id === selectedOption) || null;
@@ -595,11 +678,11 @@ const ServiceBooking = () => {
       location: pickupAddress || 'Your location',
       pickupCoordinates,
       destinationLocation:
-      service === 'taxi' || service === 'delivery' ?
+      service === 'taxi' || service === 'delivery' || service === 'relocation-transport' ?
       destinationAddress :
       null,
       destinationCoordinates:
-      service === 'taxi' || service === 'delivery' ?
+      service === 'taxi' || service === 'delivery' || service === 'relocation-transport' ?
       destinationCoordinates :
       null,
       paymentMethod,
@@ -686,7 +769,8 @@ const ServiceBooking = () => {
     const safeValue = Math.max(0.1, Number(value) || 0.1);
     setSolarPanelSizesSqm((current) => current.map((size, idx) => idx === index ? safeValue : size));
   };
-  const needsPickupAndDelivery = service === 'delivery' || service === 'taxi';
+  const needsPickupAndDelivery =
+    service === 'delivery' || service === 'taxi' || service === 'relocation-transport';
   const isCarWash = service === 'car-wash';
   const isWindowSolarService = service === 'window-solar-clean';
   const selectedOptionDetails = getSelectedOptionDetails();
@@ -710,6 +794,7 @@ const ServiceBooking = () => {
       case 'taxi':
         return 'RIDE';
       case 'delivery':
+      case 'relocation-transport':
         return 'DELIVERY';
       default:
         return 'ALL';
@@ -1157,15 +1242,21 @@ const ServiceBooking = () => {
               {/* Destination Address */}
               <div className="relative">
                 <label className="block text-slate-700 dark:text-slate-300 text-sm font-bold mb-2 ml-1">
-                  {service === 'taxi' ?
-                'Destination Address' :
-                'Delivery Address'}
+                  {service === 'taxi'
+                    ? 'Destination Address'
+                    : service === 'relocation-transport'
+                      ? 'Drop-off Address'
+                      : 'Delivery Address'}
                 </label>
                 <div className="relative">
                   <AddressAutocomplete
                     value={destinationAddress}
                     placeholder={
-                      service === 'taxi' ? 'Enter destination' : 'Enter delivery address'
+                      service === 'taxi'
+                        ? 'Enter destination'
+                        : service === 'relocation-transport'
+                          ? 'Enter drop-off address'
+                          : 'Enter delivery address'
                     }
                     inputClassName="w-full p-3.5 bg-white/70 dark:bg-slate-800/60 backdrop-blur border border-slate-200 dark:border-slate-700 rounded-xl pl-11 pr-20 focus:ring-2 focus:ring-eco-500 focus:border-transparent outline-none transition-all dark:text-white placeholder:text-slate-400"
                     onChange={(next) => {
@@ -1261,7 +1352,11 @@ const ServiceBooking = () => {
               className="glass p-4 rounded-xl border-l-4 border-l-eco-500">
 
                   <h3 className="font-bold text-slate-800 dark:text-slate-200 mb-2">
-                    {service === 'taxi' ? 'Fare Estimate' : 'Delivery Fee'}
+                    {service === 'taxi'
+                      ? 'Fare Estimate'
+                      : service === 'relocation-transport'
+                        ? 'Relocation Fee'
+                        : 'Delivery Fee'}
                   </h3>
                   <div className="flex justify-between items-center">
                     <span className="text-2xl font-bold text-slate-900 dark:text-white">
@@ -1492,6 +1587,8 @@ const ServiceBooking = () => {
             'Request Ride' :
             service === 'delivery' ?
             'Schedule Delivery' :
+            service === 'relocation-transport' ?
+            'Book Relocation' :
             'Book Now'}
           </motion.button>
         </motion.div>
