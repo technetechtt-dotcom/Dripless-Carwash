@@ -15,6 +15,8 @@ export function JobCard({ job }: JobCardProps) {
         return 'bg-cyan-50 text-cyan-600 border-cyan-200/50 dark:bg-cyan-900/20 dark:text-cyan-400 dark:border-cyan-800/50';
       case 'PARCEL':
         return 'bg-amber-50 text-amber-600 border-amber-200/50 dark:bg-amber-900/20 dark:text-amber-400 dark:border-amber-800/50';
+      case 'HOME_SERVICE':
+        return 'bg-indigo-50 text-indigo-600 border-indigo-200/50 dark:bg-indigo-900/20 dark:text-indigo-400 dark:border-indigo-800/50';
       default:
         return 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400';
     }
@@ -26,7 +28,9 @@ export function JobCard({ job }: JobCardProps) {
       case 'WASH':
         return 'Car Wash';
       case 'PARCEL':
-        return 'Parcel';
+        return 'Relocation';
+      case 'HOME_SERVICE':
+        return 'Home Service';
       default:
         return type;
     }

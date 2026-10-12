@@ -36,8 +36,8 @@ const HelpCenter = () => {
     topics: [
     'How to book a car wash',
     'Scheduling a cleaning service',
-    'Booking an eco taxi',
-    'Parcel delivery options',
+    'Corporate and office cleaning',
+    'Relocation transport options',
     'Canceling or rescheduling']
 
   },

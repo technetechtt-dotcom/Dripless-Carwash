@@ -1104,14 +1104,14 @@ export const bookingApi = {
     if (existingAssigned) {
       return existingAssigned;
     }
-    const types: ServiceType[] = ['RIDE', 'WASH', 'PARCEL'];
+    const types: ServiceType[] = ['WASH', 'HOME_SERVICE', 'PARCEL'];
     const serviceType = types[Math.floor(Math.random() * types.length)];
     const serviceName =
-      serviceType === 'RIDE'
-        ? 'Dripless Ride'
-        : serviceType === 'WASH'
-          ? 'Dripless Wash'
-          : 'Dripless Parcel';
+      serviceType === 'WASH'
+        ? 'Dripless Wash'
+        : serviceType === 'HOME_SERVICE'
+          ? 'Mattress Cleaning'
+          : 'Relocation Transport';
 
     const booking: BookingContract = {
       id: createId('booking'),
@@ -1120,16 +1120,17 @@ export const bookingApi = {
       serviceType,
       serviceName,
       optionName:
-        serviceType === 'RIDE'
-          ? 'Hybrid Vehicle'
-          : serviceType === 'WASH'
-            ? 'Premium Wash'
-            : 'Standard Delivery',
+        serviceType === 'WASH'
+          ? 'Premium Wash'
+          : serviceType === 'HOME_SERVICE'
+            ? 'Queen / King'
+            : 'Home — Bakkie Load',
       pickupLocation: '101 Cyberdyne Systems Way',
       pickupCoordinates: textToGeoPoint('101 Cyberdyne Systems Way', 301),
-      destinationLocation: serviceType === 'WASH' ? null : '2029 Future Blvd',
+      destinationLocation:
+        serviceType === 'PARCEL' ? '2029 Future Blvd' : null,
       destinationCoordinates:
-        serviceType === 'WASH' ? null : textToGeoPoint('2029 Future Blvd', 303),
+        serviceType === 'PARCEL' ? textToGeoPoint('2029 Future Blvd', 303) : null,
       paymentMethod: 'ozow',
       price: 42,
       ecoPoints: 50,

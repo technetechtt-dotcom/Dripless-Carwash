@@ -21,6 +21,7 @@ import type { ImpactSummary } from '@shared/api';
 import {
   bookingRouteForServiceSlug,
   filterLaunchCatalog,
+  HOME_QUICK_ACTION_SLUGS,
   QUICK_SERVICE_PRESENTATION,
   type CatalogServiceRecord
 } from '@shared/catalog-offerings';
@@ -122,25 +123,29 @@ const Home = () => {
     };
   }, [user?.id]);
 
-  const quickServices = useMemo(
-    () =>
-      catalog.slice(0, 4).map((service) => {
-        const presentation = QUICK_SERVICE_PRESENTATION[service.slug] ?? {
-          title: service.name,
-          description: service.description ?? 'Book now',
-          gradient: 'bg-gradient-to-br from-eco-400 to-eco-600',
-          icon: 'wash' as const
-        };
-        return {
-          slug: service.slug,
-          title: presentation.title,
-          description: presentation.description,
-          gradient: presentation.gradient,
-          route: bookingRouteForServiceSlug(service.slug)
-        };
-      }),
-    [catalog]
-  );
+  const quickServices = useMemo(() => {
+    const bySlug = new Map(catalog.map((service) => [service.slug, service]));
+    const priority = new Set<string>(HOME_QUICK_ACTION_SLUGS);
+    const ordered = HOME_QUICK_ACTION_SLUGS.map((slug) => bySlug.get(slug)).filter(
+      (service): service is CatalogServiceRecord => Boolean(service)
+    );
+    const fallback = catalog.filter((service) => !priority.has(service.slug));
+    return [...ordered, ...fallback].slice(0, 4).map((service) => {
+      const presentation = QUICK_SERVICE_PRESENTATION[service.slug] ?? {
+        title: service.name,
+        description: service.description ?? 'Book now',
+        gradient: 'bg-gradient-to-br from-eco-400 to-eco-600',
+        icon: 'wash' as const
+      };
+      return {
+        slug: service.slug,
+        title: presentation.title,
+        description: presentation.description,
+        gradient: presentation.gradient,
+        route: bookingRouteForServiceSlug(service.slug)
+      };
+    });
+  }, [catalog]);
 
   const primaryActive = activeBookings[0];
   const streakDays = impact?.ecoStreakDays ?? 0;

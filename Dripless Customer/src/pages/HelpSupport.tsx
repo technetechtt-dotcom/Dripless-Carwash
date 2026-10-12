@@ -60,7 +60,7 @@ const HelpSupport = () => {
     id: 8,
     question: 'What makes these services eco-friendly?',
     answer:
-    'All our services use environmentally friendly products and practices. Our car wash uses biodegradable soaps, our taxis are hybrid or electric vehicles, and our cleaning services use non-toxic, eco-friendly cleaning solutions.'
+    'All our services use environmentally friendly products and practices. Our car wash uses biodegradable soaps and waterless methods, and our cleaning services use non-toxic, eco-friendly cleaning solutions.'
   }];
 
   const toggleFaq = (id: number) => {

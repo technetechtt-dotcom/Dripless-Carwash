@@ -521,6 +521,14 @@ const ServiceBooking = () => {
       navigate('/booking/upholstery-cleaning', { replace: true });
       return;
     }
+    if (service === 'home-service') {
+      navigate('/booking/mattress-cleaning', { replace: true });
+      return;
+    }
+    if (service === 'fleet-wash' || service === 'ceramic-coating' || service === 'engine-detail' || service === 'headlight-restore') {
+      navigate('/booking/car-wash', { replace: true });
+      return;
+    }
     const bookableExtraSlugs = new Set([
       'mattress-cleaning',
       'upholstery-cleaning',
@@ -777,22 +785,21 @@ const ServiceBooking = () => {
   const toSpecialScope = (serviceKey?: string): SpecialServiceScope => {
     switch (serviceKey) {
       case 'car-wash':
+      case 'fleet-wash':
         return 'CAR_WASH';
       case 'window-solar-clean':
         return 'WINDOW_SOLAR';
       case 'mattress-cleaning':
-        return 'MATTRESS';
       case 'upholstery-cleaning':
       case 'couch-cleaning':
-        return 'COUCH';
       case 'spring-deep-clean':
+      case 'carpet-cleaning':
       case 'corporate-office-cleaning':
       case 'office-deep-clean':
+      case 'home-service':
         return 'HOME_SERVICE';
-      case 'carpet-cleaning':
-        return 'CARPET';
       case 'taxi':
-        return 'RIDE';
+        return 'TAXI';
       case 'delivery':
       case 'relocation-transport':
         return 'DELIVERY';

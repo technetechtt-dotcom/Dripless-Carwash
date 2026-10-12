@@ -8,19 +8,20 @@ import { useDriverBookings } from '../contexts/DriverBookingContext';
 import { driverStatsApi } from '@shared/api';
 import type { DriverWeekStats } from '@shared/api';
 
-const LAUNCH_JOB_TYPES: Array<'ALL' | JobType> = ['ALL', 'WASH', 'HOME_SERVICE'];
+const LAUNCH_JOB_TYPES = new Set<JobType>(['WASH', 'HOME_SERVICE', 'PARCEL']);
 
 export function JobsPage() {
   const [filter, setFilter] = useState<'ALL' | JobType>('ALL');
   const [weekStats, setWeekStats] = useState<DriverWeekStats | null>(null);
   const { completedBookings } = useDriverBookings();
-  const launchJobs = completedBookings.filter((job) => job.type === 'WASH' || job.type === 'HOME_SERVICE');
+  const launchJobs = completedBookings.filter((job) => LAUNCH_JOB_TYPES.has(job.type));
   const filteredJobs =
     filter === 'ALL' ? launchJobs : launchJobs.filter((job) => job.type === filter);
   const filters: { id: 'ALL' | JobType; label: string }[] = [
     { id: 'ALL', label: 'All' },
     { id: 'WASH', label: 'Washes' },
-    { id: 'HOME_SERVICE', label: 'Home Services' }
+    { id: 'HOME_SERVICE', label: 'Home Services' },
+    { id: 'PARCEL', label: 'Relocation' }
   ];
 
   useEffect(() => {

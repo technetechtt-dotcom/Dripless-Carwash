@@ -19,13 +19,13 @@ export function useDriverStats(completedBookings: Booking[]) {
     );
     const totalJobs = completedBookings.length;
 
-    // Calculate breakdown by type
+    // Calculate breakdown by type (launch-aligned)
     const breakdown = {
-      RIDE: completedBookings.
-      filter((b) => b.type === 'RIDE').
-      reduce((sum, b) => sum + b.earnings, 0),
       WASH: completedBookings.
       filter((b) => b.type === 'WASH').
+      reduce((sum, b) => sum + b.earnings, 0),
+      HOME_SERVICE: completedBookings.
+      filter((b) => b.type === 'HOME_SERVICE').
       reduce((sum, b) => sum + b.earnings, 0),
       PARCEL: completedBookings.
       filter((b) => b.type === 'PARCEL').

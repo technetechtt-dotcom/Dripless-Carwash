@@ -9,6 +9,7 @@ export const DEFAULT_OPS_PERMISSIONS = [
   'bookings:assign',
   'notifications:broadcast',
   'activity:read',
+  'finance:read',
   'incidents:read',
   'incidents:manage',
   'payments:manage',

@@ -18,6 +18,7 @@ import {
   customerServiceOfferings
 } from '@shared/customer-offerings';
 import {
+  bookingRouteForServiceSlug,
   filterLaunchCatalog,
   type CatalogServiceRecord
 } from '@shared/catalog-offerings';
@@ -164,7 +165,7 @@ const Services = () => {
                     variants={item}
                     whileTap={{ scale: 0.98 }}
                     className="glass-card p-4 flex items-center cursor-pointer group"
-                    onClick={() => navigate(`/booking/${offering.id}`)}>
+                    onClick={() => navigate(bookingRouteForServiceSlug(offering.id))}>
                     <div className={`${gradientForCategory(offering.category)} p-3 rounded-xl mr-3.5 shadow-md group-hover:scale-110 transition-transform duration-300`}>
                       {iconForOffering(offering.id)}
                     </div>

@@ -23,7 +23,7 @@ const onboardingSlides = [
 {
   title: 'Eco-Friendly Services',
   description:
-  "From waterless car washes to green taxi rides, we're committed to sustainability.",
+  "From waterless car washes to home and office cleaning, we're committed to sustainability.",
   gradient: 'from-teal-600 via-emerald-500 to-green-500',
   bgAccent: 'bg-emerald-400/20',
   icon: CarIcon,

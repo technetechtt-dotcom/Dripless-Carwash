@@ -6,9 +6,15 @@ import { fromCents } from '../money.js';
 
 export function serviceSlugToType(serviceSlug: string): string {
   const s = serviceSlug.toLowerCase();
-  if (s.includes('taxi') || s.includes('ride')) return 'RIDE';
-  if (s.includes('parcel') || s.includes('delivery')) return 'PARCEL';
-  if (s.includes('wash') || s.includes('car-wash')) return 'WASH';
+  if (s.includes('taxi') || s === 'ride') return 'RIDE';
+  if (
+    s.includes('parcel') ||
+    s.includes('delivery') ||
+    s.includes('relocation')
+  ) {
+    return 'PARCEL';
+  }
+  if (s.includes('wash') || s.includes('car-wash') || s.includes('fleet')) return 'WASH';
   return 'HOME_SERVICE';
 }
 
@@ -109,21 +115,13 @@ export function mapPromotionDto(row: {
 }) {
   const audience =
     row.audience === 'both' ? 'all' : (row.audience as 'customer' | 'driver' | 'all');
-  const scopeMap: Record<string, string> = {
-    ALL: 'ALL',
-    CAR_WASH: 'CAR_WASH',
-    TAXI: 'RIDE',
-    DELIVERY: 'PARCEL',
-    WINDOW_SOLAR: 'HOME_SERVICE',
-    HOME_SERVICE: 'HOME_SERVICE'
-  };
   return {
     id: row.id,
     title: row.title,
     description: row.description,
     promoCode: row.promoCode,
     audience,
-    serviceScope: scopeMap[row.serviceScope] || row.serviceScope,
+    serviceScope: row.serviceScope,
     discountType: row.discountType,
     discountValue: row.discountValue,
     startsAt: row.startsAt.toISOString(),

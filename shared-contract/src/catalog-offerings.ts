@@ -82,8 +82,78 @@ export const QUICK_SERVICE_PRESENTATION: Record<
   }
 };
 
+/** Preferred Home quick-action order (first four that exist in catalog). */
+export const HOME_QUICK_ACTION_SLUGS = [
+  'car-wash',
+  'window-solar-clean',
+  'mattress-cleaning',
+  'relocation-transport',
+  'upholstery-cleaning',
+  'carpet-cleaning',
+  'corporate-office-cleaning',
+  'office-deep-clean',
+  'spring-deep-clean'
+] as const;
+
 export function bookingRouteForServiceSlug(slug: string) {
   if (slug === 'home-service') return '/booking/mattress-cleaning';
   if (slug === 'couch-cleaning') return '/booking/upholstery-cleaning';
+  if (slug === 'fleet-wash') return '/booking/car-wash';
+  if (slug === 'ceramic-coating' || slug === 'engine-detail' || slug === 'headlight-restore') {
+    return '/booking/car-wash';
+  }
   return `/booking/${slug}`;
+}
+
+/** Map a booking service display name (or slug) to a bookable route slug. */
+export function bookingSlugFromServiceName(service: string): string {
+  const value = service.trim().toLowerCase();
+  if (!value) return 'car-wash';
+
+  const slugCandidates = [
+    'relocation-transport',
+    'corporate-office-cleaning',
+    'office-deep-clean',
+    'window-solar-clean',
+    'mattress-cleaning',
+    'upholstery-cleaning',
+    'spring-deep-clean',
+    'carpet-cleaning',
+    'car-wash',
+    'home-service',
+    'fleet-wash',
+    'couch-cleaning'
+  ];
+  for (const slug of slugCandidates) {
+    if (value === slug || value.includes(slug.replace(/-/g, ' ')) || value.includes(slug)) {
+      if (slug === 'home-service' || slug === 'couch-cleaning' || slug === 'fleet-wash') {
+        return bookingRouteForServiceSlug(slug).replace('/booking/', '');
+      }
+      return slug;
+    }
+  }
+
+  if (value.includes('relocation') || value.includes('furniture transport') || value.includes('moving')) {
+    return 'relocation-transport';
+  }
+  if (value.includes('corporate office') || value.includes('office cleaning')) {
+    return value.includes('deep') ? 'office-deep-clean' : 'corporate-office-cleaning';
+  }
+  if (value.includes('office deep')) return 'office-deep-clean';
+  if (value.includes('solar') || value.includes('window')) return 'window-solar-clean';
+  if (value.includes('mattress')) return 'mattress-cleaning';
+  if (value.includes('upholstery') || value.includes('couch')) return 'upholstery-cleaning';
+  if (value.includes('spring') || value.includes('move in') || value.includes('move out')) {
+    return 'spring-deep-clean';
+  }
+  if (value.includes('carpet')) return 'carpet-cleaning';
+  if (value.includes('fleet') || value.includes('wash') || value.includes('valet') || value.includes('detail')) {
+    return 'car-wash';
+  }
+  // Launch-excluded mobility — send users to services hub via car-wash fallback is wrong;
+  // rebook of historic taxi/delivery should land on services list via redirect in booking page.
+  if (value.includes('taxi') || value.includes('ride') || value.includes('parcel') || value.includes('delivery')) {
+    return 'car-wash';
+  }
+  return 'car-wash';
 }

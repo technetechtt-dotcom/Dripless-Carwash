@@ -61,10 +61,22 @@ export function ActiveJobCard({ job, onStatusUpdate }: ActiveJobCardProps) {
         return 'text-cyan-600 dark:text-cyan-400';
       case 'PARCEL':
         return 'text-amber-600 dark:text-amber-400';
+      case 'HOME_SERVICE':
+        return 'text-indigo-600 dark:text-indigo-400';
       default:
         return 'text-slate-500 dark:text-slate-400';
     }
   };
+  const typeLabel =
+    job.type === 'RIDE'
+      ? 'Passenger Ride'
+      : job.type === 'WASH'
+        ? 'Car Wash'
+        : job.type === 'HOME_SERVICE'
+          ? 'Home Service'
+          : job.type === 'PARCEL'
+            ? 'Relocation Transport'
+            : 'Service';
   return (
     <>
       <GlassCard className="p-5">
@@ -74,11 +86,7 @@ export function ActiveJobCard({ job, onStatusUpdate }: ActiveJobCardProps) {
               Current Job
             </h3>
             <p className={`text-sm font-medium ${getTypeColor(job.type)}`}>
-              {job.type === 'RIDE' ?
-              'Passenger Ride' :
-              job.type === 'WASH' ?
-              'Car Wash' :
-              'Parcel Delivery'}
+              {typeLabel}
             </p>
           </div>
           <div className="bg-emerald-50 dark:bg-emerald-900/30 border border-emerald-200/50 dark:border-emerald-700/50 px-3 py-1 rounded-full">

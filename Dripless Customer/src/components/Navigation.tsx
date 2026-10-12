@@ -12,9 +12,7 @@ import {
   SofaIcon,
   DropletIcon,
   BuildingIcon,
-  ChevronRightIcon,
-  ShieldIcon,
-  WrenchIcon } from
+  ChevronRightIcon } from
 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 const Navigation = () => {
@@ -60,21 +58,6 @@ const Navigation = () => {
       name: 'Dripless Car Wash',
       route: '/booking/car-wash',
       icon: CarIcon
-    },
-    {
-      name: 'Ceramic Coating',
-      route: '/booking/car-wash',
-      icon: ShieldIcon
-    },
-    {
-      name: 'Engine Bay Detail',
-      route: '/booking/car-wash',
-      icon: WrenchIcon
-    },
-    {
-      name: 'Headlight Restoration',
-      route: '/booking/car-wash',
-      icon: SparklesIcon
     }]
 
   },

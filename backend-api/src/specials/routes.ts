@@ -23,13 +23,18 @@ function normalizeScope(value: string) {
     COUCH: 'HOME_SERVICE',
     CARPET: 'HOME_SERVICE'
   };
-  return (map[value] || value) as
+  const normalized = (map[value] || value) as
     | 'ALL'
     | 'CAR_WASH'
     | 'TAXI'
     | 'DELIVERY'
     | 'WINDOW_SOLAR'
     | 'HOME_SERVICE';
+  const allowed = new Set(['ALL', 'CAR_WASH', 'TAXI', 'DELIVERY', 'WINDOW_SOLAR', 'HOME_SERVICE']);
+  if (!allowed.has(normalized)) {
+    return 'ALL';
+  }
+  return normalized;
 }
 
 
@@ -198,8 +203,12 @@ specialsOpsRouter.patch(
           promoCode: req.body.promoCode
             ? String(req.body.promoCode).trim().toUpperCase()
             : undefined,
-          audience: req.body.audience,
-          serviceScope: req.body.serviceScope,
+          audience: req.body.audience
+            ? normalizeAudience(req.body.audience)
+            : undefined,
+          serviceScope: req.body.serviceScope
+            ? normalizeScope(req.body.serviceScope)
+            : undefined,
           discountType: req.body.discountType,
           discountValue: req.body.discountValue,
           startsAt: req.body.startsAt ? new Date(req.body.startsAt) : undefined,

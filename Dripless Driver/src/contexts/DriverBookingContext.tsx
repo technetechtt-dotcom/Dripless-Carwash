@@ -509,7 +509,7 @@ export const DriverBookingProvider: React.FC<{
           'Dripless Wash' :
           incomingJob.type === 'HOME_SERVICE' ?
           'Dripless Home Service' :
-          'Dripless Parcel',
+          'Dripless Relocation',
         userName: incomingJob.customerName.toLowerCase().replace(/\s+/g, '_'),
         price: incomingJob.earnings,
         ecoPoints: Math.max(10, Math.round(incomingJob.earnings * 4)),

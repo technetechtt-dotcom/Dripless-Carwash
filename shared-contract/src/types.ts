@@ -181,15 +181,14 @@ export interface NotificationContract {
 
 export type SpecialAudience = 'customer' | 'driver' | 'all';
 export type SpecialDiscountType = 'PERCENT' | 'FIXED';
+/** Matches Prisma SpecialServiceScope (legacy UI aliases normalized server-side). */
 export type SpecialServiceScope =
   | 'ALL'
   | 'CAR_WASH'
+  | 'TAXI'
+  | 'DELIVERY'
   | 'WINDOW_SOLAR'
-  | 'MATTRESS'
-  | 'COUCH'
-  | 'CARPET'
-  | 'RIDE'
-  | 'DELIVERY';
+  | 'HOME_SERVICE';
 
 export interface OpsSpecial {
   id: string;

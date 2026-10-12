@@ -212,11 +212,8 @@ export const SpecialsSection = ({
           <option value="ALL">All services</option>
           <option value="CAR_WASH">Car wash</option>
           <option value="WINDOW_SOLAR">Window and solar</option>
-          <option value="MATTRESS">Mattress cleaning</option>
-          <option value="COUCH">Couch cleaning</option>
-          <option value="CARPET">Carpet cleaning</option>
-          <option value="RIDE">Ride</option>
-          <option value="DELIVERY">Delivery</option>
+          <option value="HOME_SERVICE">Home and office cleaning</option>
+          <option value="DELIVERY">Relocation transport</option>
         </select>
         <select
           value={specialDiscountType}

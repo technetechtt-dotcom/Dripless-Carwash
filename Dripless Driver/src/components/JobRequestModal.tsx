@@ -54,6 +54,12 @@ export function JobRequestModal({
           bg: 'bg-amber-50 dark:bg-amber-900/20',
           border: 'border-amber-200/50 dark:border-amber-800/50'
         };
+      case 'HOME_SERVICE':
+        return {
+          color: 'text-indigo-600 dark:text-indigo-400',
+          bg: 'bg-indigo-50 dark:bg-indigo-900/20',
+          border: 'border-indigo-200/50 dark:border-indigo-800/50'
+        };
       default:
         return {
           color: 'text-slate-600 dark:text-slate-400',
@@ -62,6 +68,16 @@ export function JobRequestModal({
         };
     }
   };
+  const typeLabel =
+    job.type === 'RIDE'
+      ? 'RIDE'
+      : job.type === 'WASH'
+        ? 'WASH'
+        : job.type === 'HOME_SERVICE'
+          ? 'HOME SERVICE'
+          : job.type === 'PARCEL'
+            ? 'RELOCATION'
+            : job.type;
   const typeStyles = getTypeStyles(job.type);
   return (
     <AnimatePresence>
@@ -128,7 +144,7 @@ export function JobRequestModal({
                   <span
                   className={`px-3 py-1 rounded-full text-xs font-bold border ${typeStyles.bg} ${typeStyles.color} ${typeStyles.border}`}>
 
-                    NEW {job.type} REQUEST
+                    NEW {typeLabel} REQUEST
                   </span>
                   <h2
                   id="job-request-title"
@@ -159,7 +175,7 @@ export function JobRequestModal({
                 ) : null}
                 {job.pooledWithBookingId ? (
                   <div className="text-xs rounded-xl bg-amber-50 dark:bg-amber-900/20 border border-amber-200/70 dark:border-amber-800/50 px-3 py-2 text-amber-700 dark:text-amber-300">
-                    Parcel pooled with booking {job.pooledWithBookingId}
+                    Pooled with booking {job.pooledWithBookingId}
                   </div>
                 ) : null}
                 <div className="flex items-center justify-between text-sm text-slate-500 dark:text-slate-400 bg-slate-50/80 dark:bg-slate-800/50 p-3 rounded-xl border border-slate-100 dark:border-slate-700">

@@ -4,17 +4,10 @@ import { ArrowLeftIcon, CalendarClockIcon, DownloadIcon, MapPinIcon, SearchIcon 
 import { toast } from 'sonner';
 import { useBookings } from '../contexts/BookingContext';
 import { formatCurrency, formatPoints } from '../utils/currency';
+import { bookingSlugFromServiceName } from '@shared/catalog-offerings';
 import { ROUTES } from '../utils/routes';
 
 type Filter = 'all' | 'active' | 'completed' | 'cancelled';
-
-const routeForService = (service: string) => {
-  const value = service.toLowerCase();
-  if (value.includes('ride') || value.includes('taxi')) return 'taxi';
-  if (value.includes('parcel') || value.includes('delivery')) return 'delivery';
-  if (value.includes('solar') || value.includes('window')) return 'window-solar-clean';
-  return 'car-wash';
-};
 
 const ServiceHistory = () => {
   const navigate = useNavigate();
@@ -72,7 +65,7 @@ const ServiceHistory = () => {
           {['pending', 'confirmed', 'in-progress'].includes(booking.status) ? <button onClick={() => navigate(ROUTES.TRACKING, { state: { bookingId: booking.id } })} className="text-sm font-bold text-eco-600">Track</button> : null}
           {['pending', 'confirmed'].includes(booking.status) ? <button disabled={busyId === booking.id} onClick={() => void cancel(booking.id)} className="text-sm font-bold text-red-600 disabled:opacity-50">Cancel</button> : null}
           {booking.status === 'completed' ? <button onClick={() => navigate(ROUTES.RATE_SERVICE, { state: { bookingId: booking.id, service: { name: booking.service, date: booking.date } } })} className="text-sm font-bold text-amber-600">Rate</button> : null}
-          <button onClick={() => navigate(ROUTES.BOOK_SERVICE(routeForService(booking.service)))} className="text-sm font-bold text-slate-600 dark:text-slate-300">Rebook</button>
+          <button onClick={() => navigate(ROUTES.BOOK_SERVICE(bookingSlugFromServiceName(booking.service)))} className="text-sm font-bold text-slate-600 dark:text-slate-300">Rebook</button>
         </div>
       </article>)}
       <button onClick={exportHistory} disabled={visible.length === 0} className="w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 dark:text-white py-3 rounded-xl font-bold flex items-center justify-center gap-2 disabled:opacity-50"><DownloadIcon size={18} />Export current view</button>
