@@ -40,8 +40,10 @@ const iconForOffering = (id: string) => {
     return <SunIcon size={20} className="text-white" />;
   }
   if (id.includes('mattress')) return <BedDoubleIcon size={20} className="text-white" />;
-  if (id.includes('couch')) return <SofaIcon size={20} className="text-white" />;
+  if (id.includes('upholstery') || id.includes('couch')) return <SofaIcon size={20} className="text-white" />;
+  if (id.includes('spring')) return <HomeIcon size={20} className="text-white" />;
   if (id.includes('carpet')) return <DropletIcon size={20} className="text-white" />;
+  if (id.includes('corporate') || id.includes('office')) return <HomeIcon size={20} className="text-white" />;
   if (id === 'dripless-features') return <SparklesIcon size={20} className="text-white" />;
   return <SparklesIcon size={20} className="text-white" />;
 };
@@ -72,16 +74,24 @@ const Services = () => {
 
   const visibleOfferings = useMemo(() => {
     const activeSlugs = new Set(catalog.map((service) => service.slug));
-    const hasHomeService = activeSlugs.has('home-service');
+    const catalogLinkedIds = new Set([
+      'mattress-cleaning',
+      'upholstery-cleaning',
+      'spring-deep-clean',
+      'carpet-cleaning',
+      'window-solar-clean',
+      'corporate-office-cleaning',
+      'office-deep-clean'
+    ]);
     return customerServiceOfferings.filter((offering) => {
       if (offering.category === 'MOBILITY_DELIVERY') return false;
+      if (offering.category === 'SPECIALIZED') return false;
+      if (offering.id === 'fleet-wash') return activeSlugs.has('car-wash');
       if (offering.id === 'car-wash' || offering.id === 'window-solar-clean') {
         return activeSlugs.has(offering.id);
       }
-      if (offering.category === 'HOME_SERVICE' && ['mattress-cleaning', 'couch-cleaning', 'carpet-cleaning', 'window-solar-clean'].includes(offering.id)) {
-        return offering.id === 'window-solar-clean'
-          ? activeSlugs.has('window-solar-clean')
-          : hasHomeService;
+      if (catalogLinkedIds.has(offering.id)) {
+        return activeSlugs.has(offering.id);
       }
       return false;
     });
@@ -123,6 +133,7 @@ const Services = () => {
             <motion.div key={category} variants={item} className="space-y-3">
               <h2 className="text-lg font-bold text-slate-800 dark:text-slate-100 px-1 flex items-center">
                 {category === 'HOME_SERVICE' && <HomeIcon size={18} className="text-blue-500 mr-2" />}
+                {category === 'COMMERCIAL' && <HomeIcon size={18} className="text-slate-500 mr-2" />}
                 {customerServiceCategoryLabels[category as keyof typeof customerServiceCategoryLabels]}
               </h2>
               <div className="space-y-3">

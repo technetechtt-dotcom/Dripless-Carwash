@@ -34,13 +34,50 @@ export const QUICK_SERVICE_PRESENTATION: Record<
   },
   'home-service': {
     title: 'Home Service',
-    description: 'Mattress, couch & carpet',
+    description: 'Mattress, upholstery & carpet',
     gradient: 'bg-gradient-to-br from-indigo-400 to-indigo-600',
+    icon: 'home'
+  },
+  'mattress-cleaning': {
+    title: 'Mattress Cleaning',
+    description: 'From R300',
+    gradient: 'bg-gradient-to-br from-sky-400 to-blue-600',
+    icon: 'home'
+  },
+  'upholstery-cleaning': {
+    title: 'Upholstery Cleaning',
+    description: 'From R200 / seater',
+    gradient: 'bg-gradient-to-br from-emerald-400 to-teal-600',
+    icon: 'home'
+  },
+  'spring-deep-clean': {
+    title: 'Spring Deep Clean',
+    description: 'From R550',
+    gradient: 'bg-gradient-to-br from-amber-400 to-orange-600',
+    icon: 'home'
+  },
+  'carpet-cleaning': {
+    title: 'Carpet Cleaning',
+    description: 'From R150',
+    gradient: 'bg-gradient-to-br from-violet-400 to-purple-600',
+    icon: 'home'
+  },
+  'corporate-office-cleaning': {
+    title: 'Corporate Office',
+    description: 'From R950',
+    gradient: 'bg-gradient-to-br from-slate-500 to-slate-700',
+    icon: 'home'
+  },
+  'office-deep-clean': {
+    title: 'Office Deep Clean',
+    description: 'Walls to couches',
+    gradient: 'bg-gradient-to-br from-cyan-500 to-slate-700',
     icon: 'home'
   }
 };
 
 export function bookingRouteForServiceSlug(slug: string) {
   if (slug === 'home-service') return '/booking/mattress-cleaning';
+  if (slug === 'couch-cleaning') return '/booking/upholstery-cleaning';
   return `/booking/${slug}`;
 }

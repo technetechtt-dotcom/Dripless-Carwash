@@ -121,10 +121,56 @@ async function main() {
     { slug: 'window', name: 'Window Cleaning', basePrice: 3999, ecoPointsAward: 400 },
     { slug: 'solar', name: 'Solar Panel Cleaning', basePrice: 4500, ecoPointsAward: 450 }
   ]);
-  await upsertService('home-service', 'Home Service', [
-    { slug: 'mattress', name: 'Mattress Clean', basePrice: 5500, ecoPointsAward: 500 },
-    { slug: 'couch', name: 'Couch Clean', basePrice: 6500, ecoPointsAward: 550 },
-    { slug: 'carpet', name: 'Carpet Clean', basePrice: 7500, ecoPointsAward: 600 }
+  // Legacy umbrella kept inactive — book via dedicated home-cleaning services below.
+  await upsertService(
+    'home-service',
+    'Home Service',
+    [
+      { slug: 'mattress', name: 'Mattress Clean', basePrice: 55000, ecoPointsAward: 550 },
+      { slug: 'couch', name: 'Couch Clean', basePrice: 40000, ecoPointsAward: 400 },
+      { slug: 'carpet', name: 'Carpet Clean', basePrice: 55000, ecoPointsAward: 550 }
+    ],
+    false
+  );
+  await upsertService('mattress-cleaning', 'Mattress Cleaning', [
+    { slug: 'single', name: 'Single', basePrice: 30000, ecoPointsAward: 300 },
+    { slug: 'double', name: 'Double', basePrice: 40000, ecoPointsAward: 400 },
+    { slug: 'queen-king', name: 'Queen / King', basePrice: 55000, ecoPointsAward: 550 }
+  ]);
+  await upsertService('upholstery-cleaning', 'Upholstery Cleaning', [
+    { slug: '1-seater', name: '1-Seater', basePrice: 20000, ecoPointsAward: 200 },
+    { slug: '2-seater', name: '2-Seater', basePrice: 30000, ecoPointsAward: 300 },
+    { slug: '3-seater', name: '3-Seater', basePrice: 40000, ecoPointsAward: 400 },
+    { slug: 'l-shape', name: 'L-Shape Couch', basePrice: 70000, ecoPointsAward: 700 }
+  ]);
+  await upsertService('spring-deep-clean', 'Spring Deep Clean', [
+    { slug: '1-bedroom', name: '1 Bedroom', basePrice: 55000, ecoPointsAward: 550 },
+    { slug: '2-bedroom', name: '2 Bedroom', basePrice: 75000, ecoPointsAward: 750 },
+    { slug: '3-bedroom', name: '3 Bedroom', basePrice: 95000, ecoPointsAward: 950 },
+    { slug: 'spring-deep-clean', name: 'Spring Deep Clean', basePrice: 130000, ecoPointsAward: 1300 },
+    { slug: 'move-in-out', name: 'Move In / Move Out', basePrice: 160000, ecoPointsAward: 1600 }
+  ]);
+  await upsertService('carpet-cleaning', 'Carpet Cleaning', [
+    { slug: 'small-room', name: 'Small Room (Up to 10m²)', basePrice: 35000, ecoPointsAward: 350 },
+    { slug: 'medium-room', name: 'Medium Room (10–20m²)', basePrice: 55000, ecoPointsAward: 550 },
+    { slug: 'large-room', name: 'Large Room (20–30m²)', basePrice: 75000, ecoPointsAward: 750 },
+    { slug: 'lounge', name: 'Lounge (Standard)', basePrice: 60000, ecoPointsAward: 600 },
+    { slug: 'stairs', name: 'Stairs (Per Flight)', basePrice: 15000, ecoPointsAward: 150 }
+  ]);
+  await upsertService('corporate-office-cleaning', 'Corporate Office Cleaning', [
+    { slug: 'small-office', name: 'Small Office (Up to 50m²)', basePrice: 95000, ecoPointsAward: 950 },
+    { slug: 'medium-office', name: 'Medium Office (50–150m²)', basePrice: 185000, ecoPointsAward: 1850 },
+    { slug: 'large-office', name: 'Large Office (150–300m²)', basePrice: 320000, ecoPointsAward: 3200 },
+    { slug: 'full-floor', name: 'Full Floor / Open Plan', basePrice: 480000, ecoPointsAward: 4800 }
+  ]);
+  await upsertService('office-deep-clean', 'Office Deep Cleaning Solutions', [
+    { slug: 'walls', name: 'Walls', basePrice: 45000, ecoPointsAward: 450 },
+    { slug: 'windows', name: 'Windows', basePrice: 35000, ecoPointsAward: 350 },
+    { slug: 'mats', name: 'Mats', basePrice: 12000, ecoPointsAward: 120 },
+    { slug: 'bathrooms', name: 'Bathrooms', basePrice: 40000, ecoPointsAward: 400 },
+    { slug: 'office', name: 'Office (Floors & Desks)', basePrice: 65000, ecoPointsAward: 650 },
+    { slug: 'chairs', name: 'Chairs (Per Chair)', basePrice: 8000, ecoPointsAward: 80 },
+    { slug: 'couches', name: 'Couches', basePrice: 35000, ecoPointsAward: 350 }
   ]);
 
   const demoPassword = await hashPassword('DemoPass123!');

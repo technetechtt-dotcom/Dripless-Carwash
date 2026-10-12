@@ -39,21 +39,28 @@ export const customerServiceOfferings: CustomerServiceOffering[] = [
   {
     id: 'mattress-cleaning',
     title: 'Mattress Cleaning',
-    description: 'Deep clean and sanitization for healthier sleep.',
+    description: 'Single, double, and queen/king mattress deep clean.',
     category: 'HOME_SERVICE',
     serviceType: 'HOME_SERVICE'
   },
   {
-    id: 'couch-cleaning',
-    title: 'Couch Cleaning',
-    description: 'Revive and refresh upholstery fabrics.',
+    id: 'upholstery-cleaning',
+    title: 'Upholstery Cleaning',
+    description: 'Per-seater and L-shape couch cleaning.',
+    category: 'HOME_SERVICE',
+    serviceType: 'HOME_SERVICE'
+  },
+  {
+    id: 'spring-deep-clean',
+    title: 'Spring Deep Clean',
+    description: 'Bedroom packages, spring clean, and move in/out.',
     category: 'HOME_SERVICE',
     serviceType: 'HOME_SERVICE'
   },
   {
     id: 'carpet-cleaning',
     title: 'Carpet Cleaning',
-    description: 'Deep clean plus stain and odor removal.',
+    description: 'Rooms, lounge, and stairs — by size.',
     category: 'HOME_SERVICE',
     serviceType: 'HOME_SERVICE'
   },
@@ -65,9 +72,16 @@ export const customerServiceOfferings: CustomerServiceOffering[] = [
     serviceType: 'WASH'
   },
   {
-    id: 'office-cleaning',
-    title: 'Office Window Clean',
-    description: 'Commercial window service for office buildings.',
+    id: 'corporate-office-cleaning',
+    title: 'Corporate Office Cleaning',
+    description: 'Scheduled cleaning for small offices through full floors.',
+    category: 'COMMERCIAL',
+    serviceType: 'HOME_SERVICE'
+  },
+  {
+    id: 'office-deep-clean',
+    title: 'Office Deep Cleaning Solutions',
+    description: 'Walls, windows, mats, bathrooms, office, chairs, and couches.',
     category: 'COMMERCIAL',
     serviceType: 'HOME_SERVICE'
   },

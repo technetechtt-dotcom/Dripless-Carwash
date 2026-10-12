@@ -98,9 +98,14 @@ const Navigation = () => {
       icon: BedDoubleIcon
     },
     {
-      name: 'Couch Cleaning',
-      route: '/booking/couch-cleaning',
+      name: 'Upholstery Cleaning',
+      route: '/booking/upholstery-cleaning',
       icon: SofaIcon
+    },
+    {
+      name: 'Spring Deep Clean',
+      route: '/booking/spring-deep-clean',
+      icon: HomeIcon
     },
     {
       name: 'Carpet Cleaning',
@@ -124,9 +129,14 @@ const Navigation = () => {
       icon: CarIcon
     },
     {
-      name: 'Office Window Clean',
-      route: '/booking/window-solar-clean',
-      icon: SunIcon
+      name: 'Corporate Office Cleaning',
+      route: '/booking/corporate-office-cleaning',
+      icon: BuildingIcon
+    },
+    {
+      name: 'Office Deep Cleaning Solutions',
+      route: '/booking/office-deep-clean',
+      icon: SparklesIcon
     }]
 
   }];

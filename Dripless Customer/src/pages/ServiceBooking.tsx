@@ -110,103 +110,261 @@ const serviceTypes = {
   'mattress-cleaning': {
     title: 'Mattress Cleaning',
     options: [
-    {
-      id: 'single-mattress',
-      name: 'Single Mattress',
-      description: 'Deep clean and sanitize single mattress.',
-      price: 59.99,
-      eco: 5
-    },
-    {
-      id: 'double-queen-mattress',
-      name: 'Double/Queen Mattress',
-      description: 'Deep clean and sanitize double or queen mattress.',
-      price: 79.99,
-      eco: 5
-    },
-    {
-      id: 'king-mattress',
-      name: 'King Mattress',
-      description: 'Deep clean and sanitize king mattress.',
-      price: 99.99,
-      eco: 5
-    },
-    {
-      id: 'deep-sanitization',
-      name: 'Deep Sanitization Package',
-      description:
-      'Includes steam cleaning, allergen removal, and deodorizing.',
-      price: 129.99,
-      eco: 5
-    }]
-
+      {
+        id: 'single',
+        name: 'Single',
+        description: 'Deep clean and sanitize a single mattress.',
+        price: 300,
+        eco: 5
+      },
+      {
+        id: 'double',
+        name: 'Double',
+        description: 'Deep clean and sanitize a double mattress.',
+        price: 400,
+        eco: 5
+      },
+      {
+        id: 'queen-king',
+        name: 'Queen / King',
+        description: 'Deep clean and sanitize a queen or king mattress.',
+        price: 550,
+        eco: 5
+      }
+    ]
+  },
+  'upholstery-cleaning': {
+    title: 'Upholstery Cleaning',
+    options: [
+      {
+        id: '1-seater',
+        name: '1-Seater',
+        description: 'Per-seater deep clean and fabric refresh.',
+        price: 200,
+        eco: 4
+      },
+      {
+        id: '2-seater',
+        name: '2-Seater',
+        description: 'Per-seater deep clean and fabric refresh.',
+        price: 300,
+        eco: 5
+      },
+      {
+        id: '3-seater',
+        name: '3-Seater',
+        description: 'Per-seater deep clean and fabric refresh.',
+        price: 400,
+        eco: 5
+      },
+      {
+        id: 'l-shape',
+        name: 'L-Shape Couch',
+        description: 'Full L-shape couch deep clean.',
+        price: 700,
+        eco: 5
+      }
+    ]
   },
   'couch-cleaning': {
-    title: 'Couch Cleaning',
+    title: 'Upholstery Cleaning',
     options: [
-    {
-      id: 'two-seater',
-      name: '2-Seater Couch',
-      description: 'Deep clean and refresh 2-seater couch.',
-      price: 89.99,
-      eco: 5
-    },
-    {
-      id: 'three-seater',
-      name: '3-Seater Couch',
-      description: 'Deep clean and refresh 3-seater couch.',
-      price: 119.99,
-      eco: 5
-    },
-    {
-      id: 'l-shaped-sectional',
-      name: 'L-Shaped Sectional',
-      description: 'Deep clean and refresh L-shaped sectional.',
-      price: 159.99,
-      eco: 4
-    },
-    {
-      id: 'full-upholstery',
-      name: 'Full Upholstery Treatment',
-      description:
-      'Includes stain removal, fabric protection, and deodorizing.',
-      price: 199.99,
-      eco: 5
-    }]
-
+      {
+        id: '1-seater',
+        name: '1-Seater',
+        description: 'Per-seater deep clean and fabric refresh.',
+        price: 200,
+        eco: 4
+      },
+      {
+        id: '2-seater',
+        name: '2-Seater',
+        description: 'Per-seater deep clean and fabric refresh.',
+        price: 300,
+        eco: 5
+      },
+      {
+        id: '3-seater',
+        name: '3-Seater',
+        description: 'Per-seater deep clean and fabric refresh.',
+        price: 400,
+        eco: 5
+      },
+      {
+        id: 'l-shape',
+        name: 'L-Shape Couch',
+        description: 'Full L-shape couch deep clean.',
+        price: 700,
+        eco: 5
+      }
+    ]
+  },
+  'spring-deep-clean': {
+    title: 'Spring Deep Clean',
+    options: [
+      {
+        id: '1-bedroom',
+        name: '1 Bedroom',
+        description: 'Prices may vary depending on condition, size, and soiling.',
+        price: 550,
+        eco: 5
+      },
+      {
+        id: '2-bedroom',
+        name: '2 Bedroom',
+        description: 'Prices may vary depending on condition, size, and soiling.',
+        price: 750,
+        eco: 5
+      },
+      {
+        id: '3-bedroom',
+        name: '3 Bedroom',
+        description: 'Prices may vary depending on condition, size, and soiling.',
+        price: 950,
+        eco: 5
+      },
+      {
+        id: 'spring-deep-clean',
+        name: 'Spring Deep Clean',
+        description: 'Full spring deep clean package.',
+        price: 1300,
+        eco: 5
+      },
+      {
+        id: 'move-in-out',
+        name: 'Move In / Move Out',
+        description: 'Move-in or move-out deep clean.',
+        price: 1600,
+        eco: 5
+      }
+    ]
   },
   'carpet-cleaning': {
     title: 'Carpet Cleaning',
     options: [
-    {
-      id: 'small-room',
-      name: 'Small Room',
-      description: 'Up to 150 sq ft, deep clean and stain removal.',
-      price: 69.99,
-      eco: 5
-    },
-    {
-      id: 'medium-room',
-      name: 'Medium Room',
-      description: '150-300 sq ft, deep clean and stain removal.',
-      price: 99.99,
-      eco: 5
-    },
-    {
-      id: 'large-room',
-      name: 'Large Room',
-      description: '300+ sq ft, deep clean and stain removal.',
-      price: 139.99,
-      eco: 4
-    },
-    {
-      id: 'stain-removal',
-      name: 'Advanced Stain Removal',
-      description: 'Specialized treatment for tough stains and odors.',
-      price: 179.99,
-      eco: 5
-    }]
-
+      {
+        id: 'small-room',
+        name: 'Small Room (Up to 10m²)',
+        description: 'Heavily soiled carpets may incur an additional charge.',
+        price: 350,
+        eco: 5
+      },
+      {
+        id: 'medium-room',
+        name: 'Medium Room (10–20m²)',
+        description: 'Heavily soiled carpets may incur an additional charge.',
+        price: 550,
+        eco: 5
+      },
+      {
+        id: 'large-room',
+        name: 'Large Room (20–30m²)',
+        description: 'Heavily soiled carpets may incur an additional charge.',
+        price: 750,
+        eco: 5
+      },
+      {
+        id: 'lounge',
+        name: 'Lounge (Standard)',
+        description: 'Standard lounge carpet clean.',
+        price: 600,
+        eco: 5
+      },
+      {
+        id: 'stairs',
+        name: 'Stairs (Per Flight)',
+        description: 'Per flight of stairs.',
+        price: 150,
+        eco: 3
+      }
+    ]
+  },
+  'corporate-office-cleaning': {
+    title: 'Corporate Office Cleaning',
+    options: [
+      {
+        id: 'small-office',
+        name: 'Small Office (Up to 50m²)',
+        description: 'Routine corporate clean for compact offices.',
+        price: 950,
+        eco: 5
+      },
+      {
+        id: 'medium-office',
+        name: 'Medium Office (50–150m²)',
+        description: 'Routine corporate clean for mid-size offices.',
+        price: 1850,
+        eco: 5
+      },
+      {
+        id: 'large-office',
+        name: 'Large Office (150–300m²)',
+        description: 'Routine corporate clean for larger office suites.',
+        price: 3200,
+        eco: 5
+      },
+      {
+        id: 'full-floor',
+        name: 'Full Floor / Open Plan',
+        description: 'Full-floor or open-plan corporate clean.',
+        price: 4800,
+        eco: 5
+      }
+    ]
+  },
+  'office-deep-clean': {
+    title: 'Office Deep Cleaning Solutions',
+    options: [
+      {
+        id: 'walls',
+        name: 'Walls',
+        description: 'Deep clean for office walls.',
+        price: 450,
+        eco: 5
+      },
+      {
+        id: 'windows',
+        name: 'Windows',
+        description: 'Interior office window deep clean.',
+        price: 350,
+        eco: 5
+      },
+      {
+        id: 'mats',
+        name: 'Mats',
+        description: 'Entrance and floor mat deep clean.',
+        price: 120,
+        eco: 3
+      },
+      {
+        id: 'bathrooms',
+        name: 'Bathrooms',
+        description: 'Office bathroom deep clean and sanitize.',
+        price: 400,
+        eco: 5
+      },
+      {
+        id: 'office',
+        name: 'Office (Floors & Desks)',
+        description: 'Floors, desks, and workstation deep clean.',
+        price: 650,
+        eco: 5
+      },
+      {
+        id: 'chairs',
+        name: 'Chairs (Per Chair)',
+        description: 'Per office chair deep clean.',
+        price: 80,
+        eco: 2
+      },
+      {
+        id: 'couches',
+        name: 'Couches',
+        description: 'Office lounge couch deep clean.',
+        price: 350,
+        eco: 5
+      }
+    ]
   },
   taxi: {
     title: 'Eco Taxi',
@@ -277,7 +435,19 @@ const ServiceBooking = () => {
   const { service } = useParams();
   const navigate = useNavigate();
   useEffect(() => {
-    if (service && !isLaunchVisibleService(service) && service !== 'mattress-cleaning' && service !== 'couch-cleaning' && service !== 'carpet-cleaning') {
+    if (service === 'couch-cleaning') {
+      navigate('/booking/upholstery-cleaning', { replace: true });
+      return;
+    }
+    const bookableExtraSlugs = new Set([
+      'mattress-cleaning',
+      'upholstery-cleaning',
+      'spring-deep-clean',
+      'carpet-cleaning',
+      'corporate-office-cleaning',
+      'office-deep-clean'
+    ]);
+    if (service && !isLaunchVisibleService(service) && !bookableExtraSlugs.has(service)) {
       navigate(ROUTES.SERVICES, { replace: true });
     }
   }, [service, navigate]);
@@ -528,8 +698,13 @@ const ServiceBooking = () => {
         return 'WINDOW_SOLAR';
       case 'mattress-cleaning':
         return 'MATTRESS';
+      case 'upholstery-cleaning':
       case 'couch-cleaning':
         return 'COUCH';
+      case 'spring-deep-clean':
+      case 'corporate-office-cleaning':
+      case 'office-deep-clean':
+        return 'HOME_SERVICE';
       case 'carpet-cleaning':
         return 'CARPET';
       case 'taxi':
