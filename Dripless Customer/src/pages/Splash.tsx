@@ -32,7 +32,7 @@ const onboardingSlides = [
 {
   title: 'Track Your Impact',
   description:
-  'See how much CO₂, water, and plastic you save with every service.',
+  'Track completed services and eco points as you use waterless washes and cleaning.',
   gradient: 'from-cyan-600 via-blue-500 to-indigo-500',
   bgAccent: 'bg-blue-400/20',
   icon: BarChart3Icon,

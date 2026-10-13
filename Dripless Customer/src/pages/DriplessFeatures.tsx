@@ -4,7 +4,6 @@ import {
   ArrowLeftIcon,
   DiscIcon,
   BellIcon,
-  MessageSquareIcon,
   CalendarIcon,
   ClockIcon,
   BarChart3Icon,
@@ -15,9 +14,7 @@ import {
   CarIcon,
   SparklesIcon,
   AlertCircleIcon,
-  XIcon,
-  TicketIcon,
-  GiftIcon } from
+  TicketIcon } from
 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useBookings } from '../contexts/BookingContext';
@@ -53,14 +50,14 @@ const demoSlides = [
   id: 1,
   title: 'Waterless Technology',
   description:
-  'Our dripless formula cleans without a single drop of water waste',
+  'Our car wash is designed as a waterless service to reduce rinse-water use',
   gradient: 'from-eco-500 to-teal-600',
   icon: SparklesIcon
 },
 {
   id: 2,
-  title: 'Eco-Certified Products',
-  description: '100% biodegradable, chemical-free cleaning solutions',
+  title: 'Eco-Oriented Products',
+  description: 'Biodegradable cleaning products used for waterless washes where available',
   gradient: 'from-teal-500 to-cyan-600',
   icon: CheckCircleIcon
 },
@@ -74,7 +71,7 @@ const demoSlides = [
 {
   id: 4,
   title: 'Membership Perks',
-  description: 'Save up to 40% with our Dripless Disc membership program',
+  description: 'Dripless Disc membership offers discounted wash packages when available',
   gradient: 'from-blue-500 to-indigo-600',
   icon: DiscIcon
 }];
@@ -85,19 +82,11 @@ const DriplessFeatures = () => {
   const navigate = useNavigate();
   const { activeBookings, completedBookings, bookings } = useBookings();
   const [currentSlide, setCurrentSlide] = useState(0);
-  const [showFeedbackModal, setShowFeedbackModal] = useState(false);
-  const [feedbackRating, setFeedbackRating] = useState(0);
-  const [feedbackComment, setFeedbackComment] = useState('');
-  const [showReminderModal, setShowReminderModal] = useState(false);
-  const [discReminderEnabled, setDiscReminderEnabled] = useState(true);
-  const [washReminderEnabled, setWashReminderEnabled] = useState(true);
-  const [washReminderDays, setWashReminderDays] = useState(14);
   // Wash report stats
   const totalWashes = completedBookings.filter((booking) => booking.service.toLowerCase().includes('wash')).length;
   const totalSpent =
   completedBookings.reduce((sum, b) => sum + b.price, 0);
   const avgRating = '—';
-  const waterSaved = totalWashes * 150;
   return (
     <motion.div
       variants={container}
@@ -370,10 +359,10 @@ const DriplessFeatures = () => {
 
               </div>
               <p className="text-2xl font-bold text-slate-800 dark:text-white">
-                {waterSaved}L
+                {totalWashes}
               </p>
               <p className="text-xs text-slate-500 dark:text-slate-400">
-                Water Saved
+                Waterless washes
               </p>
             </div>
             <div className="glass-card p-4 text-center">
@@ -393,89 +382,42 @@ const DriplessFeatures = () => {
           </div>
         </motion.div>
 
-        {/* Reminders */}
+        {/* Notifications */}
         <motion.div variants={item} className="space-y-3">
           <h2 className="text-lg font-bold text-slate-800 dark:text-slate-100 px-1">
-            Reminders
+            Notifications
           </h2>
-
           <motion.div
-            whileTap={{
-              scale: 0.98
-            }}
+            whileTap={{ scale: 0.98 }}
             className="glass-card p-4 cursor-pointer"
-            onClick={() => setShowReminderModal(true)}>
-
-            <div className="flex items-center justify-between">
-              <div className="flex items-center">
-                <div className="bg-amber-100 dark:bg-amber-900/30 p-2.5 rounded-xl mr-3">
-                  <DiscIcon
-                    size={18}
-                    className="text-amber-600 dark:text-amber-400" />
-
-                </div>
-                <div>
-                  <h3 className="font-bold text-sm text-slate-800 dark:text-slate-200">
-                    Disc Reminder
-                  </h3>
-                  <p className="text-xs text-slate-500 dark:text-slate-400">
-                    {discReminderEnabled ?
-                    'Active — renews in 12 days' :
-                    'Disabled'}
-                  </p>
-                </div>
-              </div>
-              <div
-                className={`w-10 h-6 rounded-full p-0.5 transition-colors ${discReminderEnabled ? 'bg-eco-500' : 'bg-slate-300 dark:bg-slate-600'}`}>
-
-                <div
-                  className={`w-5 h-5 bg-white rounded-full shadow-sm transition-transform ${discReminderEnabled ? 'translate-x-4' : 'translate-x-0'}`} />
-
-              </div>
-            </div>
-          </motion.div>
-
-          <motion.div
-            whileTap={{
-              scale: 0.98
-            }}
-            className="glass-card p-4 cursor-pointer"
-            onClick={() => setShowReminderModal(true)}>
-
+            onClick={() => navigate('/notifications')}
+          >
             <div className="flex items-center justify-between">
               <div className="flex items-center">
                 <div className="bg-blue-100 dark:bg-blue-900/30 p-2.5 rounded-xl mr-3">
-                  <BellIcon
-                    size={18}
-                    className="text-blue-600 dark:text-blue-400" />
-
+                  <BellIcon size={18} className="text-blue-600 dark:text-blue-400" />
                 </div>
                 <div>
                   <h3 className="font-bold text-sm text-slate-800 dark:text-slate-200">
-                    Wash Reminder
+                    Booking alerts
                   </h3>
                   <p className="text-xs text-slate-500 dark:text-slate-400">
-                    {washReminderEnabled ?
-                    `Every ${washReminderDays} days — next in 5 days` :
-                    'Disabled'}
+                    View live booking and assignment notifications
                   </p>
                 </div>
               </div>
-              <div
-                className={`w-10 h-6 rounded-full p-0.5 transition-colors ${washReminderEnabled ? 'bg-eco-500' : 'bg-slate-300 dark:bg-slate-600'}`}>
-
-                <div
-                  className={`w-5 h-5 bg-white rounded-full shadow-sm transition-transform ${washReminderEnabled ? 'translate-x-4' : 'translate-x-0'}`} />
-
-              </div>
+              <ChevronRightIcon size={18} className="text-slate-400" />
             </div>
           </motion.div>
+          <p className="text-xs text-slate-500 dark:text-slate-400 px-1">
+            Scheduled wash and membership reminders are not available in this release.
+          </p>
         </motion.div>
 
-        {/* Vouchers & Gifts */}
+        {/* Vouchers */}
         <motion.div variants={item} className="space-y-3">
           <h2 className="text-lg font-bold text-slate-800 dark:text-slate-100 px-1">
-            Vouchers & Gifts
+            Vouchers
           </h2>
           <motion.div
             whileTap={{
@@ -494,38 +436,10 @@ const DriplessFeatures = () => {
                 </div>
                 <div>
                   <h3 className="font-bold text-sm text-slate-800 dark:text-slate-200">
-                    Redeem Voucher
+                    Redeem promo code
                   </h3>
                   <p className="text-xs text-slate-500 dark:text-slate-400">
-                    Enter a code to claim your reward
-                  </p>
-                </div>
-              </div>
-              <ChevronRightIcon size={18} className="text-slate-400" />
-            </div>
-          </motion.div>
-
-          <motion.div
-            whileTap={{
-              scale: 0.98
-            }}
-            className="glass-card p-4 cursor-pointer"
-            onClick={() => navigate('/vouchers')}>
-
-            <div className="flex items-center justify-between">
-              <div className="flex items-center">
-                <div className="bg-pink-100 dark:bg-pink-900/30 p-2.5 rounded-xl mr-3">
-                  <GiftIcon
-                    size={18}
-                    className="text-pink-600 dark:text-pink-400" />
-
-                </div>
-                <div>
-                  <h3 className="font-bold text-sm text-slate-800 dark:text-slate-200">
-                    Send a Gift
-                  </h3>
-                  <p className="text-xs text-slate-500 dark:text-slate-400">
-                    Treat someone to a Dripless wash
+                    Apply Ops-approved specials at checkout
                   </p>
                 </div>
               </div>
@@ -600,238 +514,6 @@ const DriplessFeatures = () => {
         </motion.div>
       </div>
 
-      {/* Feedback Modal */}
-      <AnimatePresence>
-        {showFeedbackModal &&
-        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center">
-            <motion.div
-            initial={{
-              opacity: 0
-            }}
-            animate={{
-              opacity: 1
-            }}
-            exit={{
-              opacity: 0
-            }}
-            className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm"
-            onClick={() => setShowFeedbackModal(false)} />
-
-            <motion.div
-            initial={{
-              y: '100%'
-            }}
-            animate={{
-              y: 0
-            }}
-            exit={{
-              y: '100%'
-            }}
-            transition={{
-              type: 'spring',
-              damping: 25,
-              stiffness: 300
-            }}
-            className="relative w-full max-w-md bg-white dark:bg-slate-900 rounded-t-3xl sm:rounded-3xl shadow-2xl p-6"
-            onClick={(e) => e.stopPropagation()}>
-
-              <div className="flex items-center justify-between mb-6">
-                <h2 className="text-xl font-bold text-slate-800 dark:text-white">
-                  Leave Feedback
-                </h2>
-                <motion.button
-                whileTap={{
-                  scale: 0.9
-                }}
-                onClick={() => setShowFeedbackModal(false)}
-                className="p-2 bg-slate-100 dark:bg-slate-800 rounded-full">
-
-                  <XIcon size={20} className="text-slate-500" />
-                </motion.button>
-              </div>
-
-              <div className="text-center mb-6">
-                <p className="text-sm text-slate-500 dark:text-slate-400 mb-3">
-                  How was your last wash?
-                </p>
-                <div className="flex justify-center gap-2">
-                  {[1, 2, 3, 4, 5].map((star) =>
-                <motion.button
-                  key={star}
-                  whileTap={{
-                    scale: 0.85
-                  }}
-                  onClick={() => setFeedbackRating(star)}
-                  className="p-1">
-
-                      <StarIcon
-                    size={32}
-                    className={`transition-colors ${star <= feedbackRating ? 'text-amber-400 fill-amber-400' : 'text-slate-300 dark:text-slate-600'}`} />
-
-                    </motion.button>
-                )}
-                </div>
-              </div>
-
-              <textarea
-              value={feedbackComment}
-              onChange={(e) => setFeedbackComment(e.target.value)}
-              placeholder="Tell us about your experience..."
-              className="w-full p-3.5 bg-white/70 dark:bg-slate-800/60 backdrop-blur border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-eco-500 focus:border-transparent outline-none transition-all dark:text-white placeholder:text-slate-400 resize-none h-24 mb-4" />
-
-
-              <motion.button
-              whileTap={{
-                scale: 0.96
-              }}
-              onClick={() => {
-                setShowFeedbackModal(false);
-                setFeedbackRating(0);
-                setFeedbackComment('');
-              }}
-              className="btn-primary w-full py-4 font-bold">
-
-                Submit Feedback
-              </motion.button>
-            </motion.div>
-          </div>
-        }
-      </AnimatePresence>
-
-      {/* Reminder Settings Modal */}
-      <AnimatePresence>
-        {showReminderModal &&
-        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center">
-            <motion.div
-            initial={{
-              opacity: 0
-            }}
-            animate={{
-              opacity: 1
-            }}
-            exit={{
-              opacity: 0
-            }}
-            className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm"
-            onClick={() => setShowReminderModal(false)} />
-
-            <motion.div
-            initial={{
-              y: '100%'
-            }}
-            animate={{
-              y: 0
-            }}
-            exit={{
-              y: '100%'
-            }}
-            transition={{
-              type: 'spring',
-              damping: 25,
-              stiffness: 300
-            }}
-            className="relative w-full max-w-md bg-white dark:bg-slate-900 rounded-t-3xl sm:rounded-3xl shadow-2xl p-6"
-            onClick={(e) => e.stopPropagation()}>
-
-              <div className="flex items-center justify-between mb-6">
-                <h2 className="text-xl font-bold text-slate-800 dark:text-white">
-                  Reminder Settings
-                </h2>
-                <motion.button
-                whileTap={{
-                  scale: 0.9
-                }}
-                onClick={() => setShowReminderModal(false)}
-                className="p-2 bg-slate-100 dark:bg-slate-800 rounded-full">
-
-                  <XIcon size={20} className="text-slate-500" />
-                </motion.button>
-              </div>
-
-              <div className="space-y-5">
-                {/* Disc Reminder */}
-                <div className="flex items-center justify-between p-4 bg-slate-50 dark:bg-slate-800/50 rounded-xl">
-                  <div className="flex items-center">
-                    <DiscIcon size={20} className="text-amber-500 mr-3" />
-                    <div>
-                      <p className="font-bold text-sm text-slate-800 dark:text-slate-200">
-                        Disc Reminder
-                      </p>
-                      <p className="text-xs text-slate-500 dark:text-slate-400">
-                        Membership renewal alerts
-                      </p>
-                    </div>
-                  </div>
-                  <button
-                  onClick={() => setDiscReminderEnabled(!discReminderEnabled)}
-                  className={`w-12 h-7 rounded-full p-0.5 transition-colors ${discReminderEnabled ? 'bg-eco-500' : 'bg-slate-300 dark:bg-slate-600'}`}>
-
-                    <div
-                    className={`w-6 h-6 bg-white rounded-full shadow-sm transition-transform ${discReminderEnabled ? 'translate-x-5' : 'translate-x-0'}`} />
-
-                  </button>
-                </div>
-
-                {/* Wash Reminder */}
-                <div className="p-4 bg-slate-50 dark:bg-slate-800/50 rounded-xl space-y-4">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center">
-                      <BellIcon size={20} className="text-blue-500 mr-3" />
-                      <div>
-                        <p className="font-bold text-sm text-slate-800 dark:text-slate-200">
-                          Wash Reminder
-                        </p>
-                        <p className="text-xs text-slate-500 dark:text-slate-400">
-                          Scheduled wash notifications
-                        </p>
-                      </div>
-                    </div>
-                    <button
-                    onClick={() =>
-                    setWashReminderEnabled(!washReminderEnabled)
-                    }
-                    className={`w-12 h-7 rounded-full p-0.5 transition-colors ${washReminderEnabled ? 'bg-eco-500' : 'bg-slate-300 dark:bg-slate-600'}`}>
-
-                      <div
-                      className={`w-6 h-6 bg-white rounded-full shadow-sm transition-transform ${washReminderEnabled ? 'translate-x-5' : 'translate-x-0'}`} />
-
-                    </button>
-                  </div>
-
-                  {washReminderEnabled &&
-                <div>
-                      <p className="text-xs text-slate-500 dark:text-slate-400 mb-2">
-                        Remind every
-                      </p>
-                      <div className="grid grid-cols-4 gap-2">
-                        {[7, 14, 21, 30].map((days) =>
-                    <button
-                      key={days}
-                      onClick={() => setWashReminderDays(days)}
-                      className={`py-2 rounded-lg text-sm font-medium transition-all ${washReminderDays === days ? 'bg-eco-500 text-white' : 'bg-white dark:bg-slate-700 text-slate-700 dark:text-slate-300'}`}>
-
-                            {days}d
-                          </button>
-                    )}
-                      </div>
-                    </div>
-                }
-                </div>
-              </div>
-
-              <motion.button
-              whileTap={{
-                scale: 0.96
-              }}
-              onClick={() => setShowReminderModal(false)}
-              className="btn-primary w-full py-4 font-bold mt-6">
-
-                Save Settings
-              </motion.button>
-            </motion.div>
-          </div>
-        }
-      </AnimatePresence>
     </motion.div>);
 
 };

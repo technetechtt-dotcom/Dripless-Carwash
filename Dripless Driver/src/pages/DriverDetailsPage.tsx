@@ -24,7 +24,7 @@ export function DriverDetailsPage({ onBack }: DriverDetailsPageProps) {
   const [formData, setFormData] = useState({
     name: driver?.name || '',
     email: driver?.email || '',
-    phone: driver?.phone || '+1 (555) 123-4567',
+    phone: driver?.phone || 'Not provided',
     vehicle: driver?.vehicle || '',
     plateNumber: driver?.plateNumber || 'ABC 1234'
   });

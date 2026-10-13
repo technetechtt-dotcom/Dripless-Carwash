@@ -60,7 +60,7 @@ const HelpSupport = () => {
     id: 8,
     question: 'What makes these services eco-friendly?',
     answer:
-    'All our services use environmentally friendly products and practices. Our car wash uses biodegradable soaps and waterless methods, and our cleaning services use non-toxic, eco-friendly cleaning solutions.'
+    'Our car wash is designed as a waterless service using biodegradable cleaning products. Home and office cleaning services use low-toxicity, eco-oriented products where available. Exact product details can vary by job.'
   }];
 
   const toggleFaq = (id: number) => {
@@ -116,30 +116,28 @@ const HelpSupport = () => {
               type="button"
               className="w-full flex items-center p-3 bg-blue-50 rounded-lg"
               onClick={() => {
-                window.location.href = 'mailto:support@ecoservices.com';
+                window.location.href = 'mailto:support@dripless.app';
               }}>
               <div className="bg-blue-500 p-2 rounded-lg mr-3">
                 <MailIcon size={18} className="text-white" />
               </div>
               <div className="text-left">
                 <p className="font-medium">Email Support</p>
-                <p className="text-xs text-gray-500">support@ecoservices.com</p>
+                <p className="text-xs text-gray-500">support@dripless.app</p>
               </div>
             </button>
-            <button
-              type="button"
+            <a
+              href="mailto:support@dripless.app?subject=Phone%20callback%20request"
               className="w-full flex items-center p-3 bg-green-50 rounded-lg"
-              onClick={() => {
-                window.location.href = 'tel:+15551234567';
-              }}>
+            >
               <div className="bg-green-500 p-2 rounded-lg mr-3">
                 <PhoneIcon size={18} className="text-white" />
               </div>
               <div className="text-left">
-                <p className="font-medium">Phone Support</p>
-                <p className="text-xs text-gray-500">+1 (555) 123-4567</p>
+                <p className="font-medium">Request a callback</p>
+                <p className="text-xs text-gray-500">Email support@dripless.app for a return call</p>
               </div>
-            </button>
+            </a>
           </div>
         </div>
         {/* FAQs */}
@@ -213,7 +211,7 @@ const HelpSupport = () => {
             <div className="bg-teal-50 rounded-lg p-3">
               <p className="text-xs text-gray-700 mb-2">
                 <span className="font-medium">Information Officer:</span>{' '}
-                privacy@ecoservices.com
+                privacy@dripless.app
               </p>
               <p className="text-xs text-gray-700">
                 <span className="font-medium">Information Regulator:</span>{' '}

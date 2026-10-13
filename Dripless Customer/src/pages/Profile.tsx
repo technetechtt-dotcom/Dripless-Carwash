@@ -6,7 +6,6 @@ import {
   HelpCircleIcon,
   LogOutIcon,
   ChevronRightIcon,
-  HomeIcon,
   CarIcon,
   MoonIcon,
   SunIcon,
@@ -28,9 +27,10 @@ import { notificationApi } from '@shared/api';
 const Profile = () => {
   const navigate = useNavigate();
   const { user, logout } = useAuth();
-  const { walletBalance } = useBookings();
+  const { walletBalance, completedBookings } = useBookings();
   const { isDark, toggleTheme } = useTheme();
   const [unreadCount, setUnreadCount] = useState(0);
+  const recentServices = completedBookings.slice(0, 3);
 
   useEffect(() => {
     if (!user?.id) return;
@@ -165,41 +165,38 @@ const Profile = () => {
             Recent Services
           </h3>
           <div className="space-y-4">
-            <div className="flex items-center p-3 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors">
-              <div className="bg-eco-100 dark:bg-eco-900/30 p-2.5 rounded-xl mr-4">
-                <CarIcon size={18} className="text-eco-600 dark:text-eco-400" />
-              </div>
-              <div className="flex-1">
-                <h4 className="font-bold text-sm text-slate-800 dark:text-slate-200">
-                  Car Wash
-                </h4>
-                <p className="text-xs text-slate-500 dark:text-slate-400">
-                  Yesterday, 3:30 PM
-                </p>
-              </div>
-              <span className="text-sm font-bold text-slate-700 dark:text-slate-300">
-                {formatCurrency(24.99)}
-              </span>
-            </div>
-            <div className="flex items-center p-3 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors">
-              <div className="bg-blue-100 dark:bg-blue-900/30 p-2.5 rounded-xl mr-4">
-                <HomeIcon
-                  size={18}
-                  className="text-blue-600 dark:text-blue-400" />
-
-              </div>
-              <div className="flex-1">
-                <h4 className="font-bold text-sm text-slate-800 dark:text-slate-200">
-                  Window Cleaning
-                </h4>
-                <p className="text-xs text-slate-500 dark:text-slate-400">
-                  May 5, 2:00 PM
-                </p>
-              </div>
-              <span className="text-sm font-bold text-slate-700 dark:text-slate-300">
-                {formatCurrency(39.99)}
-              </span>
-            </div>
+            {recentServices.length === 0 ? (
+              <p className="text-sm text-slate-500 dark:text-slate-400 px-1">
+                No completed services yet. Book a wash or cleaning to build your history.
+              </p>
+            ) : (
+              recentServices.map((booking) => (
+                <button
+                  key={booking.id}
+                  type="button"
+                  onClick={() =>
+                    navigate(ROUTES.SERVICE_DETAILS, { state: { service: booking } })
+                  }
+                  className="w-full flex items-center p-3 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors text-left"
+                >
+                  <div className="bg-eco-100 dark:bg-eco-900/30 p-2.5 rounded-xl mr-4">
+                    <CarIcon size={18} className="text-eco-600 dark:text-eco-400" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <h4 className="font-bold text-sm text-slate-800 dark:text-slate-200 truncate">
+                      {booking.service}
+                    </h4>
+                    <p className="text-xs text-slate-500 dark:text-slate-400">
+                      {booking.date}
+                      {booking.time ? `, ${booking.time}` : ''}
+                    </p>
+                  </div>
+                  <span className="text-sm font-bold text-slate-700 dark:text-slate-300 ml-2">
+                    {formatCurrency(booking.price)}
+                  </span>
+                </button>
+              ))
+            )}
           </div>
           <button
             onClick={() => navigate(ROUTES.SERVICE_HISTORY)}

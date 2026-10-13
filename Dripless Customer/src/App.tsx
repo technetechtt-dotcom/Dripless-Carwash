@@ -1,7 +1,6 @@
 import React, { Suspense, lazy } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { Toaster } from 'sonner';
-import { Loader2Icon } from 'lucide-react';
 import { AuthProvider } from './contexts/AuthContext';
 import { BookingProvider } from './contexts/BookingContext';
 import { ThemeProvider } from './contexts/ThemeContext';
@@ -19,7 +18,6 @@ import ResetPassword from './pages/ResetPassword';
 import VerifyEmail from './pages/VerifyEmail';
 // Lazy loaded pages
 const Services = lazy(() => import('./pages/Services'));
-const BookRide = lazy(() => import('./pages/BookRide'));
 const ServiceBooking = lazy(() => import('./pages/ServiceBooking'));
 const BookingConfirmation = lazy(() => import('./pages/BookingConfirmation'));
 const Tracking = lazy(() => import('./pages/Tracking'));
@@ -45,11 +43,7 @@ const Security = lazy(() => import('./pages/Security'));
 const Receipts = lazy(() => import('./pages/Receipts'));
 const SavedAddresses = lazy(() => import('./pages/SavedAddresses'));
 const PaymentReturn = lazy(() => import('./pages/PaymentReturn'));
-const LoadingFallback = () =>
-<div className="h-screen w-full flex flex-col items-center justify-center bg-slate-50 dark:bg-slate-950">
-    <Loader2Icon className="h-8 w-8 animate-spin text-eco-500 mb-2" />
-    <p className="text-slate-500 dark:text-slate-400 text-sm">Loading...</p>
-  </div>;
+const NotFound = lazy(() => import('./pages/NotFound'));
 
 export function App() {
   return (
@@ -74,7 +68,8 @@ export function App() {
                     <Route element={<Layout />}>
                       <Route path="/home" element={<Home />} />
                       <Route path="/services" element={<Services />} />
-                      <Route path="/book-ride" element={<BookRide />} />
+                      {/* Taxi/delivery excluded from pilot — redirect legacy deep links */}
+                      <Route path="/book-ride" element={<Navigate to="/services" replace />} />
                       <Route
                         path="/booking/:service"
                         element={<ServiceBooking />} />
@@ -138,6 +133,8 @@ export function App() {
                       <Route path="/payment-return" element={<PaymentReturn />} />
                     </Route>
                   </Route>
+
+                  <Route path="*" element={<NotFound />} />
                 </Routes>
               </Suspense>
             </Router>

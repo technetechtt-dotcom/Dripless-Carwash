@@ -1564,7 +1564,7 @@ const ServiceBooking = () => {
           </label>
           <div className="relative">
             <div className="w-full p-3.5 bg-white/70 dark:bg-slate-800/60 backdrop-blur border border-slate-200 dark:border-slate-700 rounded-xl pl-11 dark:text-white">
-              Secure card payment via Paystack
+              Secure bank payment via Ozow
             </div>
             <CreditCardIcon
               size={18}

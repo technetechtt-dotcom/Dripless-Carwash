@@ -7,7 +7,7 @@ const Layout = () => {
   return (
     <div className="flex flex-col h-screen bg-slate-50 dark:bg-slate-950 transition-colors duration-300">
       <main className="flex-1 overflow-y-auto pb-24 px-1 sm:px-0 scroll-smooth">
-        <div className="max-w-md mx-auto w-full h-full">
+        <div className="max-w-md md:max-w-2xl lg:max-w-4xl mx-auto w-full h-full">
           <AnimatePresence mode="wait">
             <motion.div
               key={location.pathname}

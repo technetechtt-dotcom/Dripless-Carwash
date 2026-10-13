@@ -12,7 +12,8 @@ import {
   SofaIcon,
   DropletIcon,
   BuildingIcon,
-  ChevronRightIcon } from
+  ChevronRightIcon,
+  ClipboardListIcon } from
 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 const Navigation = () => {
@@ -27,21 +28,21 @@ const Navigation = () => {
     label: 'Home'
   },
   {
-    path: '/dripless-features',
-    icon: SparklesIcon,
-    label: 'Dripless'
+    path: '/services',
+    icon: CarIcon,
+    label: 'Services'
   }];
 
   const rightNavItems = [
   {
-    path: '/services',
-    icon: CarIcon,
-    label: 'Services'
+    path: '/service-history',
+    icon: ClipboardListIcon,
+    label: 'Activity'
   },
   {
     path: '/profile',
     icon: UserIcon,
-    label: 'Profile'
+    label: 'Account'
   }];
 
   const bookingCategories = [
@@ -149,13 +150,17 @@ const Navigation = () => {
     setExpandedCategory(expandedCategory === id ? null : id);
   };
   const renderNavItem = (item: (typeof leftNavItems)[0]) => {
-    const isActive = location.pathname === item.path;
+    const isActive =
+      location.pathname === item.path ||
+      (item.path === '/service-history' && location.pathname.startsWith('/service-'));
     const Icon = item.icon;
     return (
       <NavLink
         key={item.path}
         to={item.path}
-        className="relative flex flex-col items-center justify-center w-14 h-16 rounded-2xl z-10">
+        aria-label={item.label}
+        aria-current={isActive ? 'page' : undefined}
+        className="relative flex flex-col items-center justify-center w-16 h-16 rounded-2xl z-10">
 
         {isActive &&
         <motion.div
@@ -175,16 +180,16 @@ const Navigation = () => {
           }}
           className={`flex flex-col items-center ${isActive ? 'text-eco-600 dark:text-eco-400' : 'text-slate-400 dark:text-slate-500'}`}>
 
-          <Icon size={22} strokeWidth={isActive ? 2.5 : 2} />
-          <span className="text-[9px] font-medium mt-0.5">{item.label}</span>
+          <Icon size={22} strokeWidth={isActive ? 2.5 : 2} aria-hidden />
+          <span className="text-xs font-medium mt-0.5">{item.label}</span>
         </motion.div>
       </NavLink>);
 
   };
   return (
     <>
-      <nav className="fixed bottom-0 w-full glass-nav z-50 pb-safe">
-        <div className="max-w-md mx-auto flex justify-around items-center h-20 px-1 relative">
+      <nav className="fixed bottom-0 w-full glass-nav z-50 pb-safe" aria-label="Primary">
+        <div className="max-w-md md:max-w-2xl lg:max-w-4xl mx-auto flex justify-around items-center h-20 px-1 relative">
           {leftNavItems.map(renderNavItem)}
           <div className="w-14" />
           {rightNavItems.map(renderNavItem)}
@@ -192,6 +197,10 @@ const Navigation = () => {
           {/* Floating Action Button */}
           <div className="absolute left-1/2 -translate-x-1/2 -top-6">
             <motion.button
+              type="button"
+              aria-label="Book a service"
+              aria-haspopup="dialog"
+              aria-expanded={showBookingPicker}
               onClick={() => setShowBookingPicker(true)}
               whileTap={{
                 scale: 0.95
@@ -209,9 +218,9 @@ const Navigation = () => {
                 }}
                 className="w-14 h-14 rounded-full bg-gradient-to-tr from-eco-500 to-teal-500 shadow-lg shadow-eco-500/30 flex items-center justify-center text-white">
 
-                <PlusCircleIcon size={28} />
+                <PlusCircleIcon size={28} aria-hidden />
               </motion.div>
-              <span className="text-[9px] font-medium mt-0.5 text-slate-500 dark:text-slate-400 bg-white/80 dark:bg-slate-900/80 px-2 rounded-full backdrop-blur-sm">
+              <span className="text-xs font-medium mt-0.5 text-slate-500 dark:text-slate-400 bg-white/80 dark:bg-slate-900/80 px-2 rounded-full backdrop-blur-sm">
                 Book
               </span>
             </motion.button>
@@ -222,7 +231,7 @@ const Navigation = () => {
       {/* Booking Category Picker */}
       <AnimatePresence>
         {showBookingPicker &&
-        <div className="fixed inset-0 z-[60] flex items-end justify-center">
+        <div className="fixed inset-0 z-[60] flex items-end justify-center" role="presentation">
             <motion.div
             initial={{
               opacity: 0
@@ -240,6 +249,9 @@ const Navigation = () => {
             }} />
 
             <motion.div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="book-service-title"
             initial={{
               y: '100%'
             }}
@@ -254,7 +266,7 @@ const Navigation = () => {
               damping: 28,
               stiffness: 350
             }}
-            className="relative w-full max-w-md bg-white dark:bg-slate-900 rounded-t-3xl shadow-2xl overflow-hidden"
+            className="relative w-full max-w-md md:max-w-lg bg-white dark:bg-slate-900 rounded-t-3xl shadow-2xl overflow-hidden"
             onClick={(e) => e.stopPropagation()}>
 
               {/* Handle bar */}
@@ -264,7 +276,7 @@ const Navigation = () => {
 
               <div className="px-5 pb-2 flex items-center justify-between">
                 <div>
-                  <h2 className="text-xl font-bold text-slate-800 dark:text-white">
+                  <h2 id="book-service-title" className="text-xl font-bold text-slate-800 dark:text-white">
                     Book a Service
                   </h2>
                   <p className="text-xs text-slate-500 dark:text-slate-400">
@@ -272,6 +284,8 @@ const Navigation = () => {
                   </p>
                 </div>
                 <motion.button
+                type="button"
+                aria-label="Close booking picker"
                 whileTap={{
                   scale: 0.9
                 }}
@@ -281,7 +295,7 @@ const Navigation = () => {
                 }}
                 className="p-2 bg-slate-100 dark:bg-slate-800 rounded-full">
 
-                  <XIcon size={18} className="text-slate-500" />
+                  <XIcon size={18} className="text-slate-500" aria-hidden />
                 </motion.button>
               </div>
 
@@ -296,6 +310,9 @@ const Navigation = () => {
                     className="rounded-2xl overflow-hidden bg-slate-50 dark:bg-slate-800/50">
 
                       <motion.button
+                      type="button"
+                      aria-expanded={isExpanded}
+                      aria-controls={`book-category-${category.id}`}
                       whileTap={{
                         scale: 0.98
                       }}
@@ -337,6 +354,9 @@ const Navigation = () => {
                       <AnimatePresence>
                         {isExpanded &&
                       <motion.div
+                        id={`book-category-${category.id}`}
+                        role="region"
+                        aria-label={`${category.title} services`}
                         initial={{
                           height: 0,
                           opacity: 0
@@ -362,6 +382,7 @@ const Navigation = () => {
                             return (
                               <motion.button
                                 key={service.name}
+                                type="button"
                                 initial={{
                                   opacity: 0,
                                   x: -10

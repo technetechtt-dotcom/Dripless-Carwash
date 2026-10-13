@@ -15,7 +15,7 @@ const EcoStats: React.FC<EcoStatsProps> = ({ compact = false, summary, loading =
       icon: <LeafIcon size={compact ? 16 : 22} className="text-eco-500 dark:text-eco-400" />,
       value: summary ? String(summary.co2KgSaved) : '0',
       unit: 'kg',
-      label: 'CO₂ Saved',
+      label: 'Est. CO₂ avoided',
       bg: 'bg-eco-50 dark:bg-eco-900/20',
       border: 'border-eco-100 dark:border-eco-900/30'
     },
@@ -23,7 +23,7 @@ const EcoStats: React.FC<EcoStatsProps> = ({ compact = false, summary, loading =
       icon: <DropletIcon size={compact ? 16 : 22} className="text-blue-500 dark:text-blue-400" />,
       value: summary ? String(Math.round(summary.waterSavedLitres)) : '0',
       unit: 'L',
-      label: 'Water Conserved',
+      label: 'Est. water avoided',
       bg: 'bg-blue-50 dark:bg-blue-900/20',
       border: 'border-blue-100 dark:border-blue-900/30'
     },
@@ -31,7 +31,7 @@ const EcoStats: React.FC<EcoStatsProps> = ({ compact = false, summary, loading =
       icon: <TrashIcon size={compact ? 16 : 22} className="text-orange-500 dark:text-orange-400" />,
       value: summary ? String(summary.plasticKgReduced) : '0',
       unit: 'kg',
-      label: 'Plastic Reduced',
+      label: 'Est. plastic reduced',
       bg: 'bg-orange-50 dark:bg-orange-900/20',
       border: 'border-orange-100 dark:border-orange-900/30'
     }

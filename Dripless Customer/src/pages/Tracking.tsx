@@ -16,6 +16,7 @@ import { bookingProofApi, subscribePlatformEvents, trackingApi } from '@shared/a
 import { estimateDistanceKm, estimateEtaMinutes } from '@shared/maps';
 import type { BookingTrackingSnapshot } from '@shared/types';
 import RouteMapCard from '../components/RouteMapCard';
+import { BookingStatusSteps } from '../components/BookingStatusSteps';
 import { ROUTES } from '../utils/routes';
 
 type Message = { id: string; senderRole: string; body: string; createdAt: string };
@@ -29,7 +30,9 @@ const Tracking = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const routeState = location.state as { bookingId?: string; bookingDetails?: { id?: string } } | null;
-  const bookingId = routeState?.bookingId || routeState?.bookingDetails?.id;
+  const queryBookingId = new URLSearchParams(location.search).get('bookingId') || undefined;
+  const bookingId =
+    routeState?.bookingId || routeState?.bookingDetails?.id || queryBookingId;
   const [snapshot, setSnapshot] = useState<BookingTrackingSnapshot | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [draft, setDraft] = useState('');
@@ -185,6 +188,9 @@ const Tracking = () => {
                 <span className="h-fit rounded-full bg-eco-100 dark:bg-eco-900/30 text-eco-700 dark:text-eco-300 px-3 py-1 text-xs font-bold">
                   {snapshot.serviceType}
                 </span>
+              </div>
+              <div className="mt-4">
+                <BookingStatusSteps status={snapshot.status} />
               </div>
               <div className="flex gap-2 text-sm text-slate-600 dark:text-slate-300 mt-4">
                 <MapPinIcon size={17} className="text-eco-600 shrink-0" />

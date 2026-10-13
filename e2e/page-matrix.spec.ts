@@ -13,7 +13,8 @@ const customerPublicRoutes = [
   '/verify-email',
   '/services',
   '/help-center',
-  '/help-support'
+  '/help-support',
+  '/this-route-does-not-exist'
 ];
 
 const customerProtectedRoutes = [
@@ -28,7 +29,12 @@ const customerProtectedRoutes = [
   '/profile',
   '/security',
   '/payment-return',
-  '/rewards'
+  '/rewards',
+  '/vouchers',
+  '/feedback',
+  '/payment-methods',
+  '/tracking',
+  '/dripless-features'
 ];
 
 const driverRoutes = ['/login', '/signup'];

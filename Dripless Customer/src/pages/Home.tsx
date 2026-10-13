@@ -13,6 +13,7 @@ import { motion } from 'framer-motion';
 import EcoStats from '../components/EcoStats';
 import ServiceCard from '../components/ServiceCard';
 import SmartRecommendations from '../components/SmartRecommendations';
+import { BookingStatusSteps } from '../components/BookingStatusSteps';
 import { useAuth } from '../contexts/AuthContext';
 import { useBookings } from '../contexts/BookingContext';
 import { ROUTES } from '../utils/routes';
@@ -34,19 +35,6 @@ const item = {
   hidden: { opacity: 0, y: 20 },
   show: { opacity: 1, y: 0, transition: { type: 'spring', stiffness: 300, damping: 24 } }
 };
-
-function bookingProgress(status: string) {
-  switch (status) {
-    case 'pending':
-      return 25;
-    case 'confirmed':
-      return 45;
-    case 'in-progress':
-      return 70;
-    default:
-      return 15;
-  }
-}
 
 function statusLabel(status: string) {
   switch (status) {
@@ -322,22 +310,15 @@ const Home = () => {
               </span>
             </div>
             <div className="space-y-2">
-              <div className="flex justify-between text-xs text-slate-500 dark:text-slate-400">
-                <span>Progress</span>
-                <span>{bookingProgress(primaryActive.status)}%</span>
-              </div>
-              <div className="h-2 w-full bg-slate-100 dark:bg-slate-700 rounded-full overflow-hidden">
-                <motion.div
-                  initial={{ width: 0 }}
-                  animate={{ width: `${bookingProgress(primaryActive.status)}%` }}
-                  transition={{ duration: 1.5, ease: 'easeOut' }}
-                  className="h-full bg-gradient-to-r from-eco-400 to-eco-600 rounded-full"
-                />
-              </div>
+              <p className="text-xs text-slate-500 dark:text-slate-400">Status</p>
+              <BookingStatusSteps status={primaryActive.status} />
             </div>
             <div className="flex justify-between mt-4 pt-4 border-t border-slate-100 dark:border-slate-700/50">
               <button
-                onClick={() => navigate(`${ROUTES.TRACKING}?bookingId=${primaryActive.id}`)}
+                type="button"
+                onClick={() =>
+                  navigate(ROUTES.TRACKING, { state: { bookingId: primaryActive.id } })
+                }
                 className="text-eco-600 dark:text-eco-400 text-sm font-bold hover:text-eco-700">
                 Track Status
               </button>

@@ -40,7 +40,7 @@ const Referrals = () => {
   const handleShare = async () => {
     const shareData = {
       title: 'Join Dripless Wash',
-      text: `Use my code ${referralCode} to get $10 off your first eco-friendly car wash on Dripless Wash!`,
+      text: `Use my code ${referralCode} to get R50 off your first waterless car wash on Dripless!`,
       url: 'https://dripless.app/invite/' + referralCode
     };
     try {
@@ -85,10 +85,10 @@ const Referrals = () => {
             <div className="w-16 h-16 bg-white/20 backdrop-blur-md rounded-2xl flex items-center justify-center mx-auto mb-4">
               <GiftIcon size={32} className="text-white" />
             </div>
-            <h2 className="text-3xl font-bold mb-2">Give $10, Get $10</h2>
+            <h2 className="text-3xl font-bold mb-2">Give R50, Get R50</h2>
             <p className="text-eco-100 font-medium">
-              Invite friends to Dripless Wash. They get $10 off their first
-              wash, and you get $10 credit.
+              Invite friends to Dripless. They get R50 off their first
+              wash, and you get R50 wallet credit when available.
             </p>
           </div>
         </div>
@@ -162,11 +162,11 @@ const Referrals = () => {
             },
             {
               title: 'They Book',
-              desc: 'Friends get $10 off their first eco-friendly service.'
+              desc: 'Friends get R50 off their first waterless wash.'
             },
             {
               title: 'You Earn',
-              desc: 'Get $10 credit automatically after their service completes.'
+              desc: 'Get R50 wallet credit after their first completed service.'
             }].
             map((step, i) =>
             <div key={i} className="flex gap-4">

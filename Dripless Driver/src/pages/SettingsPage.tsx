@@ -122,7 +122,7 @@ export function SettingsPage({ onBack }: SettingsPageProps) {
               type="button"
               className="w-full p-4 flex items-center justify-between border-b border-slate-100 dark:border-slate-700/50 hover:bg-slate-50/80 dark:hover:bg-slate-700/50 transition-colors"
               onClick={() =>
-                window.alert('Contact support@dripless.app or call +1 (555) 123-4567 for driver help.')
+                window.alert('Contact support@dripless.app for driver help.')
               }>
               <div className="flex items-center space-x-3">
                 <HelpCircle size={20} className="text-slate-400" />

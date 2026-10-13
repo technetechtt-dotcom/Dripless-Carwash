@@ -27,11 +27,11 @@ const PaymentMethods = () => {
             <CreditCardIcon className="text-blue-600 dark:text-blue-400" />
           </div>
           <h2 className="text-xl font-bold text-slate-900 dark:text-white mb-2">
-            Cards are handled by Paystack
+            Bank payments via Ozow
           </h2>
           <p className="text-sm leading-6 text-slate-600 dark:text-slate-300">
-            Dripless does not ask for or store your card number, expiry date, or CVV. When you pay
-            by card, you are redirected to Paystack&apos;s secure hosted checkout.
+            Checkout uses Ozow instant EFT or your Dripless Wallet balance. Dripless does not ask
+            for or store card numbers, expiry dates, or CVVs in this app.
           </p>
         </div>
 

@@ -33,7 +33,7 @@ const PrivacyPolicy = () => {
         <div className="bg-white rounded-xl shadow-sm p-4 mb-4">
           <h2 className="text-lg font-semibold mb-3">Introduction</h2>
           <p className="text-sm text-gray-600 mb-3">
-            EcoServices ("we", "our", or "us") is committed to protecting your
+            Dripless ("we", "our", or "us") is committed to protecting your
             personal information and your right to privacy. This Privacy Policy
             explains how we collect, use, disclose, and safeguard your
             information when you use our mobile application and services.
@@ -117,10 +117,7 @@ const PrivacyPolicy = () => {
               </p>
               <p className="text-xs text-gray-700">
                 <span className="font-medium">Email:</span>{' '}
-                privacy@ecoservices.com
-              </p>
-              <p className="text-xs text-gray-700">
-                <span className="font-medium">Phone:</span> +27 (0)11 123 4567
+                privacy@dripless.app
               </p>
             </div>
           </div>
@@ -151,10 +148,10 @@ const PrivacyPolicy = () => {
           <div className="space-y-2 text-sm text-gray-700">
             <p>
               <span className="font-medium">Information Officer:</span>{' '}
-              privacy@ecoservices.com
+              privacy@dripless.app
             </p>
             <p>
-              <span className="font-medium">Phone:</span> +27 (0)11 123 4567
+              <span className="font-medium">Support:</span> support@dripless.app
             </p>
             <p className="pt-2 border-t border-teal-200">
               <span className="font-medium">
