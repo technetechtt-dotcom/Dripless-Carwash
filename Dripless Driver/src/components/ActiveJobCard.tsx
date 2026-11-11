@@ -10,18 +10,23 @@ import { EvidenceCapture } from './EvidenceCapture';
 import { useDriverBookings } from '../contexts/DriverBookingContext';
 import { buildNavigationUrl } from '@shared/maps';
 import { formatZar } from '@shared/currency';
+import { bookingProofApi } from '@shared/api';
 interface ActiveJobCardProps {
   job: Job;
   onStatusUpdate: (newStatus: JobStatus) => void;
 }
 export function ActiveJobCard({ job, onStatusUpdate }: ActiveJobCardProps) {
   const [isChatOpen, setIsChatOpen] = useState(false);
+  const [deliveryPin, setDeliveryPin] = useState('');
+  const [deliveryPinVerified, setDeliveryPinVerified] = useState(false);
+  const [verifyingPin, setVerifyingPin] = useState(false);
   const { messages } = useDriverBookings();
   const unreadCount = messages.filter(
     (m) => !m.read && m.sender === 'customer'
   ).length;
   const handleCallCustomer = () => {
-    window.location.href = 'tel:+15550000000';
+    if (!job.customerPhone) return;
+    window.location.href = `tel:${job.customerPhone.replace(/\s/g, '')}`;
   };
   const handleStartNavigation = () => {
     const from = job.pickupCoordinates ?? { lat: -26.2041, lng: 28.0473 };
@@ -75,7 +80,7 @@ export function ActiveJobCard({ job, onStatusUpdate }: ActiveJobCardProps) {
         : job.type === 'HOME_SERVICE'
           ? 'Home Service'
           : job.type === 'PARCEL'
-            ? 'Relocation Transport'
+            ? (job.serviceName || 'Package Delivery')
             : 'Service';
   return (
     <>
@@ -137,13 +142,14 @@ export function ActiveJobCard({ job, onStatusUpdate }: ActiveJobCardProps) {
                   </span>
                 }
               </button>
-              <button
-                onClick={handleCallCustomer}
-                className="w-10 h-10 rounded-full bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 dark:text-emerald-400 border border-emerald-100 dark:border-emerald-800/50 flex items-center justify-center hover:bg-emerald-100 dark:hover:bg-emerald-900/40 transition-colors"
-                aria-label="Call customer">
-
-                <Phone size={20} />
-              </button>
+              {job.customerPhone ? (
+                <button
+                  onClick={handleCallCustomer}
+                  className="w-10 h-10 rounded-full bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 dark:text-emerald-400 border border-emerald-100 dark:border-emerald-800/50 flex items-center justify-center hover:bg-emerald-100 dark:hover:bg-emerald-900/40 transition-colors"
+                  aria-label="Call customer">
+                  <Phone size={20} />
+                </button>
+              ) : null}
             </div>
           </div>
 
@@ -186,6 +192,39 @@ export function ActiveJobCard({ job, onStatusUpdate }: ActiveJobCardProps) {
             <EvidenceCapture bookingId={job.id} />
           ) : null}
 
+          {job.type === 'PARCEL' && job.status === 'IN_PROGRESS' ? (
+            <div className="rounded-xl border border-amber-200/70 dark:border-amber-800/50 bg-amber-50/70 dark:bg-amber-900/20 p-3">
+              <p className="text-sm font-bold text-slate-800 dark:text-slate-100">Delivery handover PIN</p>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                Ask the customer or recipient for the 6-digit PIN before completing the delivery.
+              </p>
+              <div className="flex gap-2 mt-3">
+                <input
+                  inputMode="numeric"
+                  maxLength={6}
+                  value={deliveryPin}
+                  onChange={(event) => {
+                    setDeliveryPin(event.target.value.replace(/\D/g, '').slice(0, 6));
+                    setDeliveryPinVerified(false);
+                  }}
+                  placeholder="6-digit PIN"
+                  className="min-w-0 flex-1 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-sm dark:text-white"
+                />
+                <GlassButton
+                  disabled={deliveryPin.length !== 6 || verifyingPin || deliveryPinVerified}
+                  onClick={() => {
+                    setVerifyingPin(true);
+                    void bookingProofApi.verifyCompletionPin(job.id, deliveryPin)
+                      .then(() => setDeliveryPinVerified(true))
+                      .finally(() => setVerifyingPin(false));
+                  }}
+                  className="px-3 text-xs">
+                  {deliveryPinVerified ? 'Verified' : verifyingPin ? 'Checking…' : 'Verify'}
+                </GlassButton>
+              </div>
+            </div>
+          ) : null}
+
           {/* Actions */}
           <div className="grid grid-cols-4 gap-3 pt-2">
             <button
@@ -198,7 +237,10 @@ export function ActiveJobCard({ job, onStatusUpdate }: ActiveJobCardProps) {
             </button>
 
             <div className="col-span-3">
-              <GlassButton onClick={handleNextStep} className="w-full h-full">
+              <GlassButton
+                onClick={handleNextStep}
+                disabled={job.type === 'PARCEL' && job.status === 'IN_PROGRESS' && !deliveryPinVerified}
+                className="w-full h-full">
                 {getButtonText()}
               </GlassButton>
             </div>
