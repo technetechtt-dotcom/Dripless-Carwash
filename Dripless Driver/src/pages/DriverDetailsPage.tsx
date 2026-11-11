@@ -10,6 +10,8 @@ import {
   Camera } from
 'lucide-react';
 import { useDriverAuth } from '../contexts/DriverAuthContext';
+import { driverOperationsApi } from '@shared/api';
+import { useToast } from '../contexts/ToastContext';
 import { PageContainer } from '../components/ui/PageContainer';
 import { GlassCard } from '../components/ui/GlassCard';
 import { GlassButton } from '../components/ui/GlassButton';
@@ -17,19 +19,41 @@ interface DriverDetailsPageProps {
   onBack: () => void;
 }
 export function DriverDetailsPage({ onBack }: DriverDetailsPageProps) {
-  const { driver } = useDriverAuth();
+  const { driver, setDriverProfile } = useDriverAuth();
+  const { showToast } = useToast();
   const fileInputRef = React.useRef<HTMLInputElement>(null);
   const [avatarPreview, setAvatarPreview] = useState<string | null>(driver?.avatarUrl ?? null);
   const [isEditing, setIsEditing] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [pendingAvatar, setPendingAvatar] = useState<string | null>(null);
   const [formData, setFormData] = useState({
     name: driver?.name || '',
     email: driver?.email || '',
-    phone: driver?.phone || 'Not provided',
+    phone: driver?.phone || '',
     vehicle: driver?.vehicle || '',
-    plateNumber: driver?.plateNumber || 'ABC 1234'
+    plateNumber: driver?.plateNumber || ''
   });
-  const handleSave = () => {
-    setIsEditing(false);
+  const handleSave = async () => {
+    if (!driver || saving) return;
+    setSaving(true);
+    try {
+      const updated = await driverOperationsApi.updateProfile({
+        name: formData.name.trim(),
+        phone: formData.phone.trim() || null,
+        vehicle: formData.vehicle.trim(),
+        plateNumber: formData.plateNumber.trim() || null,
+        ...(pendingAvatar ? { avatarUrl: pendingAvatar } : {})
+      });
+      setDriverProfile(updated);
+      setAvatarPreview(updated.avatarUrl ?? null);
+      setPendingAvatar(null);
+      setIsEditing(false);
+      showToast('Profile updated', 'success');
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : 'Could not update profile', 'error');
+    } finally {
+      setSaving(false);
+    }
   };
   return (
     <PageContainer>
@@ -47,10 +71,11 @@ export function DriverDetailsPage({ onBack }: DriverDetailsPageProps) {
         <div className="ml-auto">
           {isEditing ?
           <button
-            onClick={handleSave}
-            className="text-emerald-600 dark:text-emerald-400 font-bold text-sm bg-emerald-50 dark:bg-emerald-900/30 px-3 py-1.5 rounded-full border border-emerald-200/50 dark:border-emerald-800/50">
+            onClick={() => void handleSave()}
+            disabled={saving}
+            className="text-emerald-600 disabled:opacity-50 dark:text-emerald-400 font-bold text-sm bg-emerald-50 dark:bg-emerald-900/30 px-3 py-1.5 rounded-full border border-emerald-200/50 dark:border-emerald-800/50">
 
-              Save
+              {saving ? 'Saving…' : 'Save'}
             </button> :
 
           <button
@@ -85,7 +110,17 @@ export function DriverDetailsPage({ onBack }: DriverDetailsPageProps) {
             onChange={(event) => {
               const file = event.target.files?.[0];
               if (!file) return;
-              setAvatarPreview(URL.createObjectURL(file));
+              if (file.size > 1_500_000) {
+                showToast('Profile photo must be smaller than 1.5 MB', 'error');
+                return;
+              }
+              const reader = new FileReader();
+              reader.onload = () => {
+                const value = typeof reader.result === 'string' ? reader.result : null;
+                setAvatarPreview(value);
+                setPendingAvatar(value);
+              };
+              reader.readAsDataURL(file);
             }}
           />
           {isEditing &&
@@ -129,7 +164,7 @@ export function DriverDetailsPage({ onBack }: DriverDetailsPageProps) {
                     name: e.target.value
                   })
                   }
-                  disabled={!isEditing}
+                  disabled
                   className="bg-transparent text-slate-900 dark:text-white w-full focus:outline-none disabled:opacity-70" />
 
               </div>
