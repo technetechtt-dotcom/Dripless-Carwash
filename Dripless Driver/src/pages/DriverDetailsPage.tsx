@@ -14,7 +14,6 @@ import { driverOperationsApi } from '@shared/api';
 import { useToast } from '../contexts/ToastContext';
 import { PageContainer } from '../components/ui/PageContainer';
 import { GlassCard } from '../components/ui/GlassCard';
-import { GlassButton } from '../components/ui/GlassButton';
 interface DriverDetailsPageProps {
   onBack: () => void;
 }
@@ -164,7 +163,7 @@ export function DriverDetailsPage({ onBack }: DriverDetailsPageProps) {
                     name: e.target.value
                   })
                   }
-                  disabled
+                  disabled={!isEditing}
                   className="bg-transparent text-slate-900 dark:text-white w-full focus:outline-none disabled:opacity-70" />
 
               </div>
@@ -185,10 +184,11 @@ export function DriverDetailsPage({ onBack }: DriverDetailsPageProps) {
                     email: e.target.value
                   })
                   }
-                  disabled={!isEditing}
+                  disabled
                   className="bg-transparent text-slate-900 dark:text-white w-full focus:outline-none disabled:opacity-70" />
 
               </div>
+              <p className="text-[11px] text-slate-400 ml-1">Email changes require account support verification.</p>
             </div>
 
             <div className="space-y-1">
