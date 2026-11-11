@@ -39,6 +39,8 @@ const Tracking = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [sending, setSending] = useState(false);
+  const [completionPin, setCompletionPin] = useState('');
+  const [pinBusy, setPinBusy] = useState(false);
 
   const load = useCallback(async () => {
     if (!bookingId) {
@@ -221,6 +223,37 @@ const Tracking = () => {
                 showDriverMarker
                 driverPoint={driverPoint}
               />
+            ) : null}
+
+            {snapshot.serviceType === 'PARCEL' && !['COMPLETED', 'CANCELLED'].includes(snapshot.status) ? (
+              <article className="glass-card p-5 dark:bg-slate-800/90">
+                <h3 className="font-bold dark:text-white">Delivery handover PIN</h3>
+                <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
+                  Generate this PIN when the Driver is ready to hand over the parcel or relocation items.
+                </p>
+                {completionPin ? (
+                  <div className="mt-4 rounded-2xl bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800/50 p-4 text-center">
+                    <p className="text-xs uppercase tracking-wider text-slate-500">Your handover PIN</p>
+                    <p className="text-3xl font-black tracking-[0.35em] text-slate-900 dark:text-white mt-1">{completionPin}</p>
+                    <p className="text-xs text-slate-500 mt-2">Share it only after you receive your goods.</p>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    disabled={pinBusy || !bookingId}
+                    className="btn-primary w-full py-3 mt-4 disabled:opacity-50"
+                    onClick={() => {
+                      if (!bookingId) return;
+                      setPinBusy(true);
+                      void bookingProofApi.issueCompletionPin(bookingId)
+                        .then((result) => setCompletionPin(result.pin))
+                        .catch((caught) => setError(caught instanceof Error ? caught.message : 'Unable to create delivery PIN'))
+                        .finally(() => setPinBusy(false));
+                    }}>
+                    {pinBusy ? 'Generating…' : 'Generate delivery PIN'}
+                  </button>
+                )}
+              </article>
             ) : null}
 
             <article className="glass-card p-5 dark:bg-slate-800/90">
