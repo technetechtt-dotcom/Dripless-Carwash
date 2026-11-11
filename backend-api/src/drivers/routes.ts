@@ -81,6 +81,24 @@ const driverProfileUpdateSchema = z.object({
   avatarUrl: z.string().max(2_000_000).nullable().optional()
 }).strict();
 
+driversRouter.get(
+  '/profile',
+  authRequired,
+  roleRequired(['driver']),
+  async (req, res, next) => {
+    try {
+      const driver = await prisma.driverProfile.findUnique({
+        where: { id: req.auth!.profileId },
+        include: { user: true, location: true }
+      });
+      if (!driver) throw new HttpError(404, 'Driver not found');
+      res.json(mapDriverProfile(driver));
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
 driversRouter.patch(
   '/profile',
   authRequired,
