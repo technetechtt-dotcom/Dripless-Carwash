@@ -11,6 +11,7 @@ import { useDriverBookings } from '../contexts/DriverBookingContext';
 import { buildNavigationUrl } from '@shared/maps';
 import { formatZar } from '@shared/currency';
 import { bookingProofApi } from '@shared/api';
+import { useToast } from '../contexts/ToastContext';
 interface ActiveJobCardProps {
   job: Job;
   onStatusUpdate: (newStatus: JobStatus) => void;
@@ -21,6 +22,7 @@ export function ActiveJobCard({ job, onStatusUpdate }: ActiveJobCardProps) {
   const [deliveryPinVerified, setDeliveryPinVerified] = useState(false);
   const [verifyingPin, setVerifyingPin] = useState(false);
   const { messages } = useDriverBookings();
+  const { showToast } = useToast();
   const unreadCount = messages.filter(
     (m) => !m.read && m.sender === 'customer'
   ).length;
@@ -215,7 +217,14 @@ export function ActiveJobCard({ job, onStatusUpdate }: ActiveJobCardProps) {
                   onClick={() => {
                     setVerifyingPin(true);
                     void bookingProofApi.verifyCompletionPin(job.id, deliveryPin)
-                      .then(() => setDeliveryPinVerified(true))
+                      .then(() => {
+                        setDeliveryPinVerified(true);
+                        showToast('Delivery PIN verified', 'success');
+                      })
+                      .catch((error) => {
+                        setDeliveryPinVerified(false);
+                        showToast(error instanceof Error ? error.message : 'PIN verification failed', 'error');
+                      })
                       .finally(() => setVerifyingPin(false));
                   }}
                   className="px-3 text-xs">
