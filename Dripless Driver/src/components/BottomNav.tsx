@@ -40,7 +40,7 @@ export function BottomNav({ activeTab, onTabChange }: BottomNavProps) {
       role="navigation"
       aria-label="Main navigation">
 
-      <div className="max-w-md mx-auto flex justify-between items-center">
+      <div className="max-w-md md:max-w-2xl lg:max-w-4xl mx-auto flex justify-between items-center">
         {tabs.map((tab) => {
           const isActive = activeTab === tab.id;
           const Icon = tab.icon;
