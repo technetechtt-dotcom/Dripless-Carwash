@@ -20,6 +20,7 @@ interface DriverAuthContextType {
   vehicle: string)
   => Promise<void>;
   logout: () => Promise<void>;
+  setDriverProfile: (profile: Driver) => void;
 }
 const DriverAuthContext = createContext<DriverAuthContextType | undefined>(
   undefined
@@ -69,6 +70,7 @@ export const DriverAuthProvider: React.FC<{
       setIsLoading(false);
     }
   };
+  const setDriverProfile = (profile: Driver) => setDriver(profile);
   const logout = async () => {
     await authApi.logout();
     setDriver(null);
@@ -81,7 +83,8 @@ export const DriverAuthProvider: React.FC<{
         isLoading,
         login,
         signup,
-        logout
+        logout,
+        setDriverProfile
       }}>
 
       {children}
