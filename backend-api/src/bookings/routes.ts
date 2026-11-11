@@ -107,6 +107,13 @@ bookingsRouter.post(
         serviceType: req.body.serviceType
       });
 
+      if (
+        ['taxi', 'delivery', 'relocation-transport'].includes(serviceSlug) &&
+        !req.body.destinationLocation
+      ) {
+        throw new HttpError(400, 'Destination is required for ride and delivery bookings');
+      }
+
       const priced = await resolveServerPrice({
         serviceSlug,
         optionSlug,
@@ -147,6 +154,19 @@ bookingsRouter.post(
         const route = await roadRoute(pickup, destination);
         routeDistanceKm = route.distanceKm;
         routeEtaMinutes = route.etaMinutes;
+      }
+
+      const MOBILITY_PER_KM_CENTS: Record<string, number> = {
+        taxi: 1000,
+        delivery: 800
+      };
+      if (routeDistanceKm != null && MOBILITY_PER_KM_CENTS[serviceSlug]) {
+        const mobilitySurchargeCents = Math.round(
+          routeDistanceKm * MOBILITY_PER_KM_CENTS[serviceSlug]
+        );
+        priced.basePrice += mobilitySurchargeCents;
+        priced.price += mobilitySurchargeCents;
+        priced.surchargeCents = (priced.surchargeCents ?? 0) + mobilitySurchargeCents;
       }
 
       const booking = await prisma.$transaction(async (tx) => {
