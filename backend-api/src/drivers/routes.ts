@@ -392,7 +392,10 @@ driversRouter.patch(
       if (!booking) throw new HttpError(404, 'Booking not found');
       if (booking.driverId !== driverId) throw new HttpError(403, 'Forbidden');
       assertStatusTransition(booking.status, req.body.status);
-      if (req.body.status === 'COMPLETED') {
+      if (
+        req.body.status === 'COMPLETED' &&
+        (booking.serviceSlug === 'car-wash' || booking.serviceSlug === 'fleet-wash')
+      ) {
         await assertWashCompletable(bookingId);
       }
       const updated = await prisma.$transaction(async (tx) => {
