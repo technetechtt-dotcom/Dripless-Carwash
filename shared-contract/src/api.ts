@@ -2924,6 +2924,11 @@ export const customerAccountApi = {
 };
 
 export const driverOperationsApi = {
+  updateProfile: (body: { name?: string; phone?: string | null; vehicle?: string; plateNumber?: string | null; avatarUrl?: string | null }) =>
+    requestApi<DriverProfile>('/driver/profile', { method: 'PATCH', token: getBearerToken(), body }).then((profile) => {
+      saveDriverProfile(profile);
+      return profile;
+    }),
   setOnline: (online: boolean) =>
     requestApi<{ online: boolean }>('/driver/online', { method: 'POST', token: getBearerToken(), body: { online } }),
   documents: () => requestApi<Array<Record<string, unknown>>>('/driver/documents', { token: getBearerToken() }),
