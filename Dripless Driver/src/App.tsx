@@ -56,7 +56,7 @@ function AppContent() {
   };
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-emerald-50/30 dark:from-slate-950 dark:via-slate-900 dark:to-emerald-950/30 text-slate-900 dark:text-slate-50 font-sans selection:bg-emerald-500/30 transition-colors duration-300">
-      <div className="max-w-md mx-auto bg-white/40 dark:bg-slate-900/40 backdrop-blur-sm min-h-screen relative shadow-2xl shadow-black/5 overflow-hidden border-x border-white/50 dark:border-slate-800/50">
+      <div className="max-w-md md:max-w-2xl lg:max-w-4xl mx-auto bg-white/40 dark:bg-slate-900/40 backdrop-blur-sm min-h-screen relative shadow-2xl shadow-black/5 overflow-hidden border-x border-white/50 dark:border-slate-800/50">
         <ProtectedRoute>
           {renderPage()}
           <BottomNav activeTab={activeTab} onTabChange={setActiveTab} />
