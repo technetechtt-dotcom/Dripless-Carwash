@@ -68,7 +68,7 @@ export function ProfilePage() {
               Member since{' '}
               {driver?.memberSince ?
             new Date(driver.memberSince).getFullYear() :
-            '2024'}
+            '—'}
             </span>
           </div>
         </div>
@@ -91,9 +91,7 @@ export function ProfilePage() {
         <h3 className="text-3xl font-bold">
           {driver?.ecoPoints.toLocaleString()} pts
         </h3>
-        <p className="text-emerald-100 text-sm mt-2">
-          Top 5% of drivers this week!
-        </p>
+
       </div>
 
       {/* Menu Options */}
@@ -130,12 +128,7 @@ export function ProfilePage() {
                   Documents
                 </span>
               </div>
-              <div className="flex items-center">
-                <span className="text-xs font-bold text-red-500 dark:text-red-400 mr-2 bg-red-50 dark:bg-red-900/30 px-2 py-0.5 rounded-full">
-                  1 Action
-                </span>
-                <ChevronRight size={16} className="text-slate-400" />
-              </div>
+              <ChevronRight size={16} className="text-slate-400" />
             </button>
 
             <button
