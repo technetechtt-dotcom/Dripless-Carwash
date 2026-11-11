@@ -173,6 +173,7 @@ export function mapDriverProfile(row: {
   name: string;
   phone?: string | null;
   vehicle: string;
+  plateNumber?: string | null;
   rating: number;
   ecoPoints: number;
   status: string;
@@ -195,7 +196,9 @@ export function mapDriverProfile(row: {
     id: row.id,
     name: row.name,
     email: row.user?.email || '',
+    phone: row.phone ?? null,
     vehicle: row.vehicle,
+    plateNumber: row.plateNumber ?? null,
     rating: row.rating,
     ecoPoints: row.ecoPoints,
     memberSince: row.memberSince.toISOString().slice(0, 10),
