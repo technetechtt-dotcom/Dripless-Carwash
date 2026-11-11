@@ -18,6 +18,9 @@ import ResetPassword from './pages/ResetPassword';
 import VerifyEmail from './pages/VerifyEmail';
 // Lazy loaded pages
 const Services = lazy(() => import('./pages/Services'));
+const BookRide = lazy(() => import('./pages/BookRide'));
+const RideDetails = lazy(() => import('./pages/RideDetails'));
+const DeliveryDetails = lazy(() => import('./pages/DeliveryDetails'));
 const ServiceBooking = lazy(() => import('./pages/ServiceBooking'));
 const BookingConfirmation = lazy(() => import('./pages/BookingConfirmation'));
 const Tracking = lazy(() => import('./pages/Tracking'));
@@ -68,8 +71,7 @@ export function App() {
                     <Route element={<Layout />}>
                       <Route path="/home" element={<Home />} />
                       <Route path="/services" element={<Services />} />
-                      {/* Taxi/delivery excluded from pilot — redirect legacy deep links */}
-                      <Route path="/book-ride" element={<Navigate to="/services" replace />} />
+                      <Route path="/book-ride" element={<BookRide />} />
                       <Route
                         path="/booking/:service"
                         element={<ServiceBooking />} />
@@ -78,8 +80,8 @@ export function App() {
                         path="/booking-confirmation"
                         element={<BookingConfirmation />} />
 
-                      <Route path="/ride-details" element={<Navigate to="/services" replace />} />
-                      <Route path="/delivery-details" element={<Navigate to="/services" replace />} />
+                      <Route path="/ride-details" element={<RideDetails />} />
+                      <Route path="/delivery-details" element={<DeliveryDetails />} />
 
                       <Route path="/tracking" element={<Tracking />} />
                       <Route path="/rewards" element={<Rewards />} />
