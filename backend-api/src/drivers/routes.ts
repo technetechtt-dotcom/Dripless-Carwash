@@ -13,7 +13,7 @@ import {
   autoAssignDriver,
   createOrRefreshDispatchIncident
 } from '../bookings/dispatch.js';
-import { assertWashCompletable } from '../evidence/routes.js';
+import { assertParcelCompletable, assertWashCompletable } from '../evidence/routes.js';
 import { pointInPolygon } from '../geo/zones.js';
 import { publishEvent } from '../lib/events.js';
 import { accrueDriverEarning } from '../payouts/routes.js';
@@ -263,7 +263,8 @@ driversRouter.post(
           driverId,
           status: { in: ['PENDING', 'CONFIRMED'] }
         },
-        orderBy: { createdAt: 'asc' }
+        orderBy: { createdAt: 'asc' },
+        include: { customer: true, ratings: true }
       });
 
       if (!booking) {
@@ -326,7 +327,11 @@ driversRouter.post(
         return row;
       });
       publishEvent('driver.accepted', { bookingId, driverId });
-      res.json(mapBooking(updated));
+      const enriched = await prisma.booking.findUnique({
+        where: { id: updated.id },
+        include: { customer: true, ratings: true }
+      });
+      res.json(mapBooking(enriched ?? updated));
     } catch (error) {
       next(error);
     }
@@ -426,11 +431,13 @@ driversRouter.patch(
       if (!booking) throw new HttpError(404, 'Booking not found');
       if (booking.driverId !== driverId) throw new HttpError(403, 'Forbidden');
       assertStatusTransition(booking.status, req.body.status);
-      if (
-        req.body.status === 'COMPLETED' &&
-        (booking.serviceSlug === 'car-wash' || booking.serviceSlug === 'fleet-wash')
-      ) {
-        await assertWashCompletable(bookingId);
+      if (req.body.status === 'COMPLETED') {
+        if (booking.serviceSlug === 'car-wash' || booking.serviceSlug === 'fleet-wash') {
+          await assertWashCompletable(bookingId);
+        }
+        if (booking.serviceSlug === 'delivery' || booking.serviceSlug === 'relocation-transport') {
+          await assertParcelCompletable(bookingId);
+        }
       }
       const updated = await prisma.$transaction(async (tx) => {
         const changed = await tx.booking.updateMany({
@@ -459,7 +466,11 @@ driversRouter.patch(
       });
       publishEvent('booking.status', { bookingId, status: req.body.status, driverId });
       if (req.body.status === 'COMPLETED') await accrueDriverEarning(bookingId);
-      res.json(mapBooking(updated));
+      const enriched = await prisma.booking.findUnique({
+        where: { id: updated.id },
+        include: { customer: true, ratings: true }
+      });
+      res.json(mapBooking(enriched ?? updated));
     } catch (error) {
       next(error);
     }
