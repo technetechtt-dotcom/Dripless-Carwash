@@ -11,6 +11,17 @@ const RideDetails = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const bookingDetails = (location.state as { bookingDetails?: Record<string, unknown> } | null)?.bookingDetails;
+  if (!bookingDetails) {
+    return (
+      <main className="min-h-screen p-6 flex items-center justify-center bg-slate-50 dark:bg-slate-950">
+        <div className="glass-card p-6 text-center max-w-sm">
+          <h1 className="text-xl font-bold text-slate-900 dark:text-white">Ride details unavailable</h1>
+          <p className="text-sm text-slate-500 dark:text-slate-400 mt-2">Start from the ride booking screen so pickup, destination and pricing can be confirmed.</p>
+          <button className="btn-primary mt-4 px-5 py-3" onClick={() => navigate('/booking/taxi')}>Start ride booking</button>
+        </div>
+      </main>
+    );
+  }
   const pickup = String(bookingDetails?.location || 'Pickup not provided');
   const destination = String(bookingDetails?.destinationLocation || 'Destination not provided');
   const pickupPoint = useMemo(() => (bookingDetails?.pickupCoordinates as GeoPoint | null) || textToGeoPoint(pickup, 3), [bookingDetails, pickup]);
