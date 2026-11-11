@@ -1,4 +1,4 @@
-/** Slugs excluded from v1 launch — kept in DB but not customer-bookable. */
+/** Optional service slugs that are temporarily hidden from customer booking. */
 export const LAUNCH_EXCLUDED_SERVICE_SLUGS = new Set<string>();
 
 export type CatalogServiceRecord = {
