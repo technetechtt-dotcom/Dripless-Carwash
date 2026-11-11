@@ -45,14 +45,17 @@ export function mapBookingDto(booking: {
   dispatchReason?: string | null;
   scheduledAt?: Date | null;
   createdAt: Date;
+  routeDistanceKm?: number | null;
+  routeEtaMinutes?: number | null;
   updatedAt: Date;
-  customer?: { name?: string | null; rating?: number | null } | null;
+  customer?: { name?: string | null; phone?: string | null; rating?: number | null } | null;
   ratings?: Array<{ stars: number }> | null;
 }) {
   return {
     id: booking.id,
     customerId: booking.customerId,
     customerName: booking.customer?.name,
+    customerPhone: booking.customer?.phone ?? null,
     customerRating:
       typeof booking.customer?.rating === 'number' ? booking.customer.rating : undefined,
     rating: booking.ratings?.[0]?.stars,
@@ -70,6 +73,8 @@ export function mapBookingDto(booking: {
     driverEarningsZar: fromCents(booking.price - Math.round(booking.price * 0.15)),
     promoCode: booking.promoCode ?? null,
     appliedSpecialPromoCode: booking.promoCode ?? null,
+    distance: booking.routeDistanceKm != null ? `${booking.routeDistanceKm.toFixed(1)} km` : undefined,
+    duration: booking.routeEtaMinutes != null ? `${Math.round(booking.routeEtaMinutes)} min` : undefined,
     ecoPoints: booking.ecoPoints ?? 0,
     pickupLocation: booking.pickupLocation,
     destinationLocation: booking.destinationLocation,
