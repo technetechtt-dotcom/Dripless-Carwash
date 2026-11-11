@@ -401,3 +401,15 @@ export async function assertWashCompletable(bookingId: string) {
     throw new HttpError(400, 'Wash completion requires the quality checklist');
   }
 }
+
+
+export async function assertParcelCompletable(bookingId: string) {
+  const booking = await prisma.booking.findUnique({ where: { id: bookingId } });
+  if (!booking) throw new HttpError(404, 'Booking not found');
+  if (!['delivery', 'relocation-transport'].includes(booking.serviceSlug)) return;
+  if (env.demoMode) return;
+  if (booking.completionProofOverrideAt) return;
+  if (!booking.completionPinVerifiedAt) {
+    throw new HttpError(400, 'Delivery completion requires the customer handover PIN');
+  }
+}
