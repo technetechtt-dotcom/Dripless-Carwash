@@ -85,6 +85,8 @@ export const DriverBookingProvider: React.FC<{
       'RIDE',
     status: contract.status,
     customerName: contract.customerName || 'Customer',
+    serviceName: contract.serviceName,
+    customerPhone: contract.customerPhone ?? null,
     customerRating: typeof contract.customerRating === 'number' ? contract.customerRating : 0,
     pickupLocation: contract.pickupLocation,
     pickupCoordinates: contract.pickupCoordinates ?? null,

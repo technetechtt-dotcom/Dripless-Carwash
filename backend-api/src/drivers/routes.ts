@@ -5,7 +5,7 @@ import { authRequired, roleRequired } from '../middleware/auth.js';
 import { validate } from '../middleware/validate.js';
 import { assertValidCoordinates } from '../geo/geocode.js';
 import { HttpError } from '../middleware/error.js';
-import { mapBookingDto } from '../dto/mappers.js';
+import { mapBookingDto, mapDriverProfile } from '../dto/mappers.js';
 import { env } from '../config/env.js';
 import { assertStatusTransition } from '../bookings/statusMachine.js';
 import {
@@ -13,7 +13,7 @@ import {
   autoAssignDriver,
   createOrRefreshDispatchIncident
 } from '../bookings/dispatch.js';
-import { assertWashCompletable } from '../evidence/routes.js';
+import { assertParcelCompletable, assertWashCompletable } from '../evidence/routes.js';
 import { pointInPolygon } from '../geo/zones.js';
 import { publishEvent } from '../lib/events.js';
 import { accrueDriverEarning } from '../payouts/routes.js';
@@ -73,6 +73,58 @@ driversRouter.post(
 );
 
 const mapBooking = mapBookingDto;
+const driverProfileUpdateSchema = z.object({
+  name: z.string().trim().min(2).max(120).optional(),
+  phone: z.string().trim().max(32).nullable().optional(),
+  vehicle: z.string().trim().min(2).max(120).optional(),
+  plateNumber: z.string().trim().max(32).nullable().optional(),
+  avatarUrl: z.string().max(2_000_000).nullable().optional()
+}).strict();
+
+driversRouter.get(
+  '/profile',
+  authRequired,
+  roleRequired(['driver']),
+  async (req, res, next) => {
+    try {
+      const driver = await prisma.driverProfile.findUnique({
+        where: { id: req.auth!.profileId },
+        include: { user: true, location: true }
+      });
+      if (!driver) throw new HttpError(404, 'Driver not found');
+      res.json(mapDriverProfile(driver));
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+driversRouter.patch(
+  '/profile',
+  authRequired,
+  roleRequired(['driver']),
+  validate(driverProfileUpdateSchema),
+  async (req, res, next) => {
+    try {
+      const updated = await prisma.driverProfile.update({
+        where: { id: req.auth!.profileId },
+        data: {
+          ...(req.body.name !== undefined ? { name: req.body.name } : {}),
+          ...(req.body.phone !== undefined ? { phone: req.body.phone || null } : {}),
+          ...(req.body.vehicle !== undefined ? { vehicle: req.body.vehicle } : {}),
+          ...(req.body.plateNumber !== undefined ? { plateNumber: req.body.plateNumber || null } : {}),
+          ...(req.body.avatarUrl !== undefined ? { avatarUrl: req.body.avatarUrl || null } : {})
+        },
+        include: { user: true, location: true }
+      });
+      publishEvent('driver.profile.updated', { driverId: updated.id });
+      res.json(mapDriverProfile(updated));
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
 
 const locationSchema = z
   .object({
@@ -229,7 +281,8 @@ driversRouter.post(
           driverId,
           status: { in: ['PENDING', 'CONFIRMED'] }
         },
-        orderBy: { createdAt: 'asc' }
+        orderBy: { createdAt: 'asc' },
+        include: { customer: true, ratings: true }
       });
 
       if (!booking) {
@@ -292,7 +345,11 @@ driversRouter.post(
         return row;
       });
       publishEvent('driver.accepted', { bookingId, driverId });
-      res.json(mapBooking(updated));
+      const enriched = await prisma.booking.findUnique({
+        where: { id: updated.id },
+        include: { customer: true, ratings: true }
+      });
+      res.json(mapBooking(enriched ?? updated));
     } catch (error) {
       next(error);
     }
@@ -393,7 +450,12 @@ driversRouter.patch(
       if (booking.driverId !== driverId) throw new HttpError(403, 'Forbidden');
       assertStatusTransition(booking.status, req.body.status);
       if (req.body.status === 'COMPLETED') {
-        await assertWashCompletable(bookingId);
+        if (booking.serviceSlug === 'car-wash' || booking.serviceSlug === 'fleet-wash') {
+          await assertWashCompletable(bookingId);
+        }
+        if (booking.serviceSlug === 'delivery' || booking.serviceSlug === 'relocation-transport') {
+          await assertParcelCompletable(bookingId);
+        }
       }
       const updated = await prisma.$transaction(async (tx) => {
         const changed = await tx.booking.updateMany({
@@ -422,7 +484,11 @@ driversRouter.patch(
       });
       publishEvent('booking.status', { bookingId, status: req.body.status, driverId });
       if (req.body.status === 'COMPLETED') await accrueDriverEarning(bookingId);
-      res.json(mapBooking(updated));
+      const enriched = await prisma.booking.findUnique({
+        where: { id: updated.id },
+        include: { customer: true, ratings: true }
+      });
+      res.json(mapBooking(enriched ?? updated));
     } catch (error) {
       next(error);
     }

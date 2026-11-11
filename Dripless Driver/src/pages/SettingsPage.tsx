@@ -26,7 +26,10 @@ export function SettingsPage({ onBack }: SettingsPageProps) {
   const { isDarkMode, toggleTheme } = useTheme();
   const { showToast } = useToast();
   const [notifications, setNotifications] = useState(true);
-  const [sound, setSound] = useState(true);
+  const [sound, setSound] = useState(() => {
+    try { return localStorage.getItem('dripless_driver_sound') !== 'off'; } catch { return true; }
+  });
+  const [infoPanel, setInfoPanel] = useState<'help' | 'privacy' | null>(null);
 
   useEffect(() => {
     void notificationApi
@@ -34,6 +37,10 @@ export function SettingsPage({ onBack }: SettingsPageProps) {
       .then((prefs) => setNotifications(prefs.pushEnabled))
       .catch(() => undefined);
   }, []);
+
+  useEffect(() => {
+    try { localStorage.setItem('dripless_driver_sound', sound ? 'on' : 'off'); } catch { /* ignore */ }
+  }, [sound]);
 
   const setPushEnabled = (value: boolean) => {
     setNotifications(value);
@@ -121,9 +128,7 @@ export function SettingsPage({ onBack }: SettingsPageProps) {
             <button
               type="button"
               className="w-full p-4 flex items-center justify-between border-b border-slate-100 dark:border-slate-700/50 hover:bg-slate-50/80 dark:hover:bg-slate-700/50 transition-colors"
-              onClick={() =>
-                window.alert('Contact support@dripless.app for driver help.')
-              }>
+              onClick={() => setInfoPanel(infoPanel === 'help' ? null : 'help')}>
               <div className="flex items-center space-x-3">
                 <HelpCircle size={20} className="text-slate-400" />
                 <span className="text-slate-700 dark:text-slate-200">
@@ -135,9 +140,7 @@ export function SettingsPage({ onBack }: SettingsPageProps) {
             <button
               type="button"
               className="w-full p-4 flex items-center justify-between border-b border-slate-100 dark:border-slate-700/50 hover:bg-slate-50/80 dark:hover:bg-slate-700/50 transition-colors"
-              onClick={() =>
-                window.alert('Privacy Policy: We protect driver identity, location history, and earnings data according to Dripless privacy standards.')
-              }>
+              onClick={() => setInfoPanel(infoPanel === 'privacy' ? null : 'privacy')}>
               <div className="flex items-center space-x-3">
                 <Shield size={20} className="text-slate-400" />
                 <span className="text-slate-700 dark:text-slate-200">
@@ -149,9 +152,7 @@ export function SettingsPage({ onBack }: SettingsPageProps) {
             <button
               type="button"
               className="w-full p-4 flex items-center justify-between hover:bg-slate-50/80 dark:hover:bg-slate-700/50 transition-colors"
-              onClick={() =>
-                window.alert('Dripless Driver App version 2.4.0')
-              }>
+              onClick={() => setInfoPanel(null)}>
               <div className="flex items-center space-x-3">
                 <Smartphone size={20} className="text-slate-400" />
                 <span className="text-slate-700 dark:text-slate-200">
@@ -163,6 +164,24 @@ export function SettingsPage({ onBack }: SettingsPageProps) {
               </span>
             </button>
           </GlassCard>
+          {infoPanel === 'help' ? (
+            <GlassCard className="p-4">
+              <h4 className="font-bold text-slate-900 dark:text-white">Driver Help & Support</h4>
+              <p className="text-sm text-slate-600 dark:text-slate-300 mt-2">
+                For job, payout, document or account support, email support@dripless.app. For an active-job safety emergency, use the Emergency action in the job screen so Ops receives your booking and location context.
+              </p>
+              <a href="mailto:support@dripless.app?subject=Driver%20Support" className="inline-block mt-3 text-emerald-600 dark:text-emerald-400 font-bold text-sm">Email support</a>
+            </GlassCard>
+          ) : null}
+          {infoPanel === 'privacy' ? (
+            <GlassCard className="p-4">
+              <h4 className="font-bold text-slate-900 dark:text-white">Driver Privacy</h4>
+              <p className="text-sm text-slate-600 dark:text-slate-300 mt-2">
+                Dripless uses driver identity, verification documents, job status, location while online or on an active job, and payout information to operate the service, support safety, and meet legal obligations. Access is role-controlled and auditable.
+              </p>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-3">Contact support@dripless.app for access, correction or privacy requests.</p>
+            </GlassCard>
+          ) : null}
         </div>
 
         {/* Logout */}

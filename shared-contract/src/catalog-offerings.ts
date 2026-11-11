@@ -1,5 +1,5 @@
-/** Slugs excluded from v1 launch — kept in DB but not customer-bookable. */
-export const LAUNCH_EXCLUDED_SERVICE_SLUGS = new Set(['taxi', 'delivery']);
+/** Optional service slugs that are temporarily hidden from customer booking. */
+export const LAUNCH_EXCLUDED_SERVICE_SLUGS = new Set<string>();
 
 export type CatalogServiceRecord = {
   slug: string;
@@ -20,6 +20,18 @@ export const QUICK_SERVICE_PRESENTATION: Record<
   string,
   { title: string; description: string; gradient: string; icon: 'wash' | 'solar' | 'home' | 'sparkles' }
 > = {
+  taxi: {
+    title: 'Ride',
+    description: 'Book a pickup in minutes',
+    gradient: 'bg-gradient-to-br from-violet-500 to-indigo-600',
+    icon: 'sparkles'
+  },
+  delivery: {
+    title: 'Send Package',
+    description: 'Pickup & delivery on demand',
+    gradient: 'bg-gradient-to-br from-orange-500 to-rose-600',
+    icon: 'sparkles'
+  },
   'car-wash': {
     title: 'Dripless Wash',
     description: 'Waterless & eco',
@@ -84,6 +96,8 @@ export const QUICK_SERVICE_PRESENTATION: Record<
 
 /** Preferred Home quick-action order (first four that exist in catalog). */
 export const HOME_QUICK_ACTION_SLUGS = [
+  'taxi',
+  'delivery',
   'car-wash',
   'window-solar-clean',
   'mattress-cleaning',
@@ -111,6 +125,8 @@ export function bookingSlugFromServiceName(service: string): string {
   if (!value) return 'car-wash';
 
   const slugCandidates = [
+    'taxi',
+    'delivery',
     'relocation-transport',
     'corporate-office-cleaning',
     'office-deep-clean',
@@ -150,10 +166,7 @@ export function bookingSlugFromServiceName(service: string): string {
   if (value.includes('fleet') || value.includes('wash') || value.includes('valet') || value.includes('detail')) {
     return 'car-wash';
   }
-  // Launch-excluded mobility — send users to services hub via car-wash fallback is wrong;
-  // rebook of historic taxi/delivery should land on services list via redirect in booking page.
-  if (value.includes('taxi') || value.includes('ride') || value.includes('parcel') || value.includes('delivery')) {
-    return 'car-wash';
-  }
+  if (value.includes('taxi') || value.includes('ride')) return 'taxi';
+  if (value.includes('parcel') || value.includes('delivery') || value.includes('courier')) return 'delivery';
   return 'car-wash';
 }

@@ -38,10 +38,11 @@ test.describe('Customer critical UI actions', () => {
     await expect(page.getByText(/no booking was selected/i)).toBeVisible();
   });
 
-  test('legacy taxi and delivery routes redirect away from booking', async ({ page }) => {
+  test('ride and delivery routes are registered and render safely', async ({ page }) => {
     for (const route of ['/book-ride', '/ride-details', '/delivery-details', '/booking/taxi', '/booking/delivery']) {
-      await page.goto(`${CUSTOMER_URL}${route}`);
-      await expect(page).not.toHaveURL(new RegExp(`${route}$`));
+      const response = await page.goto(`${CUSTOMER_URL}${route}`);
+      expect(response?.status()).toBeLessThan(500);
+      await expect(page.locator('body')).toBeVisible();
     }
   });
 

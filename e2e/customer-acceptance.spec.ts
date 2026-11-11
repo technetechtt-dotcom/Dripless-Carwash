@@ -51,7 +51,8 @@ test.describe('Customer acceptance — API coverage', () => {
   test('catalog, impact, notifications, bookings, privacy', async () => {
     const token = await loginCustomer(E2E_CUSTOMER_EMAIL, E2E_CUSTOMER_PASSWORD);
     const catalog = await api<Array<{ slug: string }>>('/catalog/services', 'GET', undefined, token);
-    expect(catalog.every((s) => s.slug !== 'taxi' && s.slug !== 'delivery')).toBeTruthy();
+    expect(catalog.some((s) => s.slug === 'taxi')).toBeTruthy();
+    expect(catalog.some((s) => s.slug === 'delivery')).toBeTruthy();
 
     const impact = await api('/impact/summary', 'GET', undefined, token);
     expect(impact).toBeTruthy();

@@ -9,7 +9,8 @@ import {
   BedDoubleIcon,
   SparklesIcon,
   HomeIcon,
-  ChevronRightIcon
+  ChevronRightIcon,
+  PackageIcon
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { catalogApi } from '@shared/api';
@@ -44,6 +45,8 @@ const iconForOffering = (id: string) => {
   if (id.includes('upholstery') || id.includes('couch')) return <SofaIcon size={20} className="text-white" />;
   if (id.includes('spring')) return <HomeIcon size={20} className="text-white" />;
   if (id.includes('carpet')) return <DropletIcon size={20} className="text-white" />;
+  if (id === 'taxi') return <CarIcon size={20} className="text-white" />;
+  if (id === 'delivery') return <PackageIcon size={20} className="text-white" />;
   if (id.includes('relocation')) return <CarIcon size={20} className="text-white" />;
   if (id.includes('corporate') || id.includes('office')) return <HomeIcon size={20} className="text-white" />;
   if (id === 'dripless-features') return <SparklesIcon size={20} className="text-white" />;
@@ -84,13 +87,13 @@ const Services = () => {
       'window-solar-clean',
       'corporate-office-cleaning',
       'office-deep-clean',
-      'relocation-transport'
+      'relocation-transport',
+      'taxi',
+      'delivery'
     ]);
     return customerServiceOfferings.filter((offering) => {
       if (offering.category === 'SPECIALIZED') return false;
-      if (offering.category === 'MOBILITY_DELIVERY') {
-        return offering.id === 'relocation-transport' && activeSlugs.has(offering.id);
-      }
+      if (offering.category === 'MOBILITY_DELIVERY') return activeSlugs.has(offering.id);
       if (offering.id === 'fleet-wash') return activeSlugs.has('car-wash');
       if (offering.id === 'car-wash' || offering.id === 'window-solar-clean') {
         return activeSlugs.has(offering.id);

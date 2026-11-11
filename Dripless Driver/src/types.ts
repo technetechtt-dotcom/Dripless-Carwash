@@ -9,6 +9,8 @@ export interface Job {
   type: JobType;
   status: JobStatus;
   customerName: string;
+  serviceName?: string;
+  customerPhone?: string | null;
   customerRating: number;
   pickupLocation: string;
   pickupCoordinates?: { lat: number; lng: number } | null;

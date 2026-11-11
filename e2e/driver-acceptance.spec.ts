@@ -3,6 +3,30 @@ import { api, loginDriver, API } from './helpers/api-client';
 import { E2E_DRIVER_EMAIL, E2E_DRIVER_PASSWORD } from './helpers/credentials';
 
 test.describe('Driver acceptance — API coverage', () => {
+  test('driver profile can be read and safely updated', async () => {
+    const token = await loginDriver(E2E_DRIVER_EMAIL, E2E_DRIVER_PASSWORD);
+    const profile = await api<{ name: string; vehicle: string; phone?: string | null; plateNumber?: string | null }>(
+      '/driver/profile',
+      'GET',
+      undefined,
+      token
+    );
+    expect(profile.name).toBeTruthy();
+    const updated = await api<{ name: string; vehicle: string }>(
+      '/driver/profile',
+      'PATCH',
+      {
+        name: profile.name,
+        vehicle: profile.vehicle,
+        phone: profile.phone ?? null,
+        plateNumber: profile.plateNumber ?? null
+      },
+      token
+    );
+    expect(updated.name).toBe(profile.name);
+    expect(updated.vehicle).toBe(profile.vehicle);
+  });
+
   test('stats, documents, payouts, impact, equipment paths', async () => {
     const token = await loginDriver(E2E_DRIVER_EMAIL, E2E_DRIVER_PASSWORD);
 

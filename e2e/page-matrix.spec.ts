@@ -58,7 +58,7 @@ test.describe('Customer page matrix', () => {
     });
   }
 
-  test('excluded taxi/delivery booking routes redirect safely', async ({ page }) => {
+  test('ride and delivery routes load safely', async ({ page }) => {
     for (const route of ['/booking/taxi', '/booking/delivery', '/ride-details', '/delivery-details']) {
       const response = await page.goto(`${CUSTOMER_URL}${route}`);
       expect(response?.status()).toBeLessThan(500);

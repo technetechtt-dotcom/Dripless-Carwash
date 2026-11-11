@@ -122,6 +122,7 @@ export interface BookingContract {
   ecoPoints: number;
   status: BookingStatus;
   customerName?: string;
+  customerPhone?: string | null;
   customerRating?: number;
   /** Customer→driver stars for this booking when rated. */
   rating?: number;
