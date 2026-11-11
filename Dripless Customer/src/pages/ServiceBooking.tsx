@@ -21,6 +21,7 @@ import CheckoutModal from '../components/CheckoutModal';
 import LocationPickerMap from '../components/LocationPickerMap';
 import AddressAutocomplete from '../components/AddressAutocomplete';
 import { apiRuntimeConfig, catalogApi, customerAccountApi, specialsApi } from '@shared/api';
+import { estimateDistanceKm } from '@shared/maps';
 import type { OpsSpecial, SpecialServiceScope } from '@shared/types';
 import { ROUTES } from '../utils/routes';
 import { formatCurrency } from '../utils/currency';
@@ -623,15 +624,29 @@ const ServiceBooking = () => {
         const option =
           serviceData.options.find((item) => item.id === selectedOption) || null;
         if (option) {
-          const basePrice = option.price;
+          const straightLineKm =
+            pickupCoordinates && destinationCoordinates
+              ? estimateDistanceKm(pickupCoordinates, destinationCoordinates)
+              : 0;
+          const estimatedRoadKm = straightLineKm > 0 ? straightLineKm * 1.18 : 0;
+          const perKm = service === 'taxi' ? 10 : service === 'delivery' ? 8 : 0;
+          const estimate = option.price + estimatedRoadKm * perKm;
           setFareEstimate({
-            min: Math.floor(basePrice - 2),
-            max: Math.ceil(basePrice + 5)
+            min: Math.max(option.price, Math.floor(estimate * 0.95)),
+            max: Math.max(option.price, Math.ceil(estimate * 1.1))
           });
         }
       }
     }
-  }, [pickupAddress, destinationAddress, selectedOption, service, serviceData]);
+  }, [
+    pickupAddress,
+    destinationAddress,
+    pickupCoordinates,
+    destinationCoordinates,
+    selectedOption,
+    service,
+    serviceData
+  ]);
   useEffect(() => {
     let cancelled = false;
     const loadSpecials = async () => {
