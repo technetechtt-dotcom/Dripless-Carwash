@@ -18,6 +18,7 @@ import {
 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useBookings } from '../contexts/BookingContext';
+import { formatCurrency } from '../utils/currency';
 const container = {
   hidden: {
     opacity: 0
@@ -44,8 +45,7 @@ const item = {
     }
   }
 };
-// Demo slides data
-const demoSlides = [
+const featureSlides = [
 {
   id: 1,
   title: 'Waterless Technology',
@@ -140,22 +140,22 @@ const DriplessFeatures = () => {
                 transition={{
                   duration: 0.3
                 }}
-                className={`bg-gradient-to-br ${demoSlides[currentSlide].gradient} p-6 rounded-2xl text-white min-h-[160px] flex flex-col justify-between`}>
+                className={`bg-gradient-to-br ${featureSlides[currentSlide].gradient} p-6 rounded-2xl text-white min-h-[160px] flex flex-col justify-between`}>
 
                 <div className="flex items-start justify-between">
                   <div className="flex-1 pr-4">
                     <p className="text-xs font-medium text-white/70 uppercase tracking-wider mb-2">
-                      {currentSlide + 1} / {demoSlides.length}
+                      {currentSlide + 1} / {featureSlides.length}
                     </p>
                     <h3 className="text-xl font-bold mb-2">
-                      {demoSlides[currentSlide].title}
+                      {featureSlides[currentSlide].title}
                     </h3>
                     <p className="text-sm text-white/80">
-                      {demoSlides[currentSlide].description}
+                      {featureSlides[currentSlide].description}
                     </p>
                   </div>
                   <div className="bg-white/20 p-3 rounded-xl backdrop-blur-sm">
-                    {createElement(demoSlides[currentSlide].icon, {
+                    {createElement(featureSlides[currentSlide].icon, {
                       size: 28
                     })}
                   </div>
@@ -165,7 +165,7 @@ const DriplessFeatures = () => {
 
             {/* Slide dots */}
             <div className="flex justify-center gap-2 mt-3">
-              {demoSlides.map((_, idx) =>
+              {featureSlides.map((_, idx) =>
               <button
                 key={idx}
                 onClick={() => setCurrentSlide(idx)}
@@ -304,7 +304,7 @@ const DriplessFeatures = () => {
                 </div>
                 <div className="text-right">
                   <p className="font-bold text-sm text-slate-800 dark:text-white">
-                    ${booking.price.toFixed(2)}
+                    {formatCurrency(booking.price)}
                   </p>
                   <p
                   className={`text-[10px] font-bold uppercase ${booking.status === 'completed' ? 'text-eco-600' : booking.status === 'cancelled' ? 'text-red-500' : 'text-amber-600'}`}>
