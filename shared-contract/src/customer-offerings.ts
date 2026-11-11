@@ -86,6 +86,20 @@ export const customerServiceOfferings: CustomerServiceOffering[] = [
     serviceType: 'HOME_SERVICE'
   },
   {
+    id: 'taxi',
+    title: 'Ride',
+    description: 'On-demand passenger pickup with live driver tracking.',
+    category: 'MOBILITY_DELIVERY',
+    serviceType: 'RIDE'
+  },
+  {
+    id: 'delivery',
+    title: 'Send Package',
+    description: 'On-demand pickup and delivery of parcels and goods.',
+    category: 'MOBILITY_DELIVERY',
+    serviceType: 'PARCEL'
+  },
+  {
     id: 'relocation-transport',
     title: 'Relocation Transport',
     description: 'Transport of home and office items and furniture for relocation.',
@@ -124,7 +138,7 @@ export const customerFeatureSet: CustomerFeature[] = [
   {
     id: 'multi-service-booking',
     title: 'Multi-service Booking',
-    description: 'Customers can request wash and home cleaning services.'
+    description: 'Customers can request cleaning, rides, parcel delivery, and relocation services.'
   },
   {
     id: 'real-time-tracking',
