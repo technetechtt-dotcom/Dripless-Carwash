@@ -13,7 +13,8 @@ import {
   DropletIcon,
   BuildingIcon,
   ChevronRightIcon,
-  ClipboardListIcon } from
+  ClipboardListIcon,
+  PackageIcon } from
 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 const Navigation = () => {
@@ -125,14 +126,24 @@ const Navigation = () => {
 
   },
   {
-    id: 'relocation',
-    title: 'Relocation',
-    subtitle: 'Home & office moves',
+    id: 'mobility',
+    title: 'Ride & Delivery',
+    subtitle: 'People, parcels & relocation',
     icon: CarIcon,
-    gradient: 'from-orange-500 to-rose-600',
-    iconBg: 'bg-orange-100 dark:bg-orange-900/30',
-    iconColor: 'text-orange-600 dark:text-orange-400',
+    gradient: 'from-violet-500 to-indigo-600',
+    iconBg: 'bg-violet-100 dark:bg-violet-900/30',
+    iconColor: 'text-violet-600 dark:text-violet-400',
     services: [
+    {
+      name: 'Book a Ride',
+      route: '/booking/taxi',
+      icon: CarIcon
+    },
+    {
+      name: 'Send a Package',
+      route: '/booking/delivery',
+      icon: PackageIcon
+    },
     {
       name: 'Relocation Transport',
       route: '/booking/relocation-transport',
