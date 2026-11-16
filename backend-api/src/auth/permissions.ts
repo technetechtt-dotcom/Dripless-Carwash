@@ -1,0 +1,20 @@
+export const DEFAULT_OPS_PERMISSIONS = [
+  'customers:read',
+  'customers:update',
+  'drivers:read',
+  'drivers:update',
+  'drivers:verify',
+  'bookings:read',
+  'bookings:update',
+  'bookings:assign',
+  'notifications:broadcast',
+  'activity:read',
+  'finance:read',
+  'incidents:read',
+  'incidents:manage',
+  'payments:manage',
+  'payouts:manage',
+  'specials:manage',
+  'privacy:manage',
+  'settings:manage'
+] as const;

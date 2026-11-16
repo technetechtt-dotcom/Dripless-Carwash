@@ -1,0 +1,441 @@
+import React, { useEffect, useMemo, useState } from 'react';
+import { NavLink, useNavigate, useLocation } from 'react-router-dom';
+import {
+  HomeIcon,
+  CarIcon,
+  UserIcon,
+  PlusCircleIcon,
+  SparklesIcon,
+  XIcon,
+  SunIcon,
+  BedDoubleIcon,
+  SofaIcon,
+  DropletIcon,
+  BuildingIcon,
+  PackageIcon,
+  ChevronRightIcon,
+  ClipboardListIcon } from
+'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { useIndustryMode } from '../contexts/IndustryModeContext';
+import IndustryModeSwitcher from './IndustryModeSwitcher';
+
+const Navigation = () => {
+  const navigate = useNavigate();
+  const location = useLocation();
+  const { mode, meta, isEhailing } = useIndustryMode();
+  const [showBookingPicker, setShowBookingPicker] = useState(false);
+  const [expandedCategory, setExpandedCategory] = useState<string | null>(null);
+  const leftNavItems = [
+  {
+    path: '/home',
+    icon: HomeIcon,
+    label: 'Home'
+  },
+  {
+    path: '/services',
+    icon: CarIcon,
+    label: 'Services'
+  }];
+
+  const rightNavItems = [
+  {
+    path: '/service-history',
+    icon: ClipboardListIcon,
+    label: 'Activity'
+  },
+  {
+    path: '/profile',
+    icon: UserIcon,
+    label: 'Account'
+  }];
+
+  const cleaningCategories = [
+    {
+      id: 'dripless',
+      title: 'Dripless Carwash',
+      subtitle: 'Waterless & eco-friendly',
+      icon: SparklesIcon,
+      gradient: 'from-eco-500 to-teal-600',
+      services: [{ name: 'Dripless Car Wash', route: '/booking/car-wash', icon: CarIcon }]
+    },
+    {
+      id: 'home',
+      title: 'Home Service',
+      subtitle: 'Cleaning for your home',
+      icon: HomeIcon,
+      gradient: 'from-blue-500 to-indigo-600',
+      services: [
+        { name: 'Window & Solar Cleaning', route: '/booking/window-solar-clean', icon: SunIcon },
+        { name: 'Mattress Cleaning', route: '/booking/mattress-cleaning', icon: BedDoubleIcon },
+        { name: 'Upholstery Cleaning', route: '/booking/upholstery-cleaning', icon: SofaIcon },
+        { name: 'Spring Deep Clean', route: '/booking/spring-deep-clean', icon: HomeIcon },
+        { name: 'Carpet Cleaning', route: '/booking/carpet-cleaning', icon: DropletIcon }
+      ]
+    },
+    {
+      id: 'commercial',
+      title: 'Commercial',
+      subtitle: 'Business & fleet services',
+      icon: BuildingIcon,
+      gradient: 'from-slate-500 to-slate-700',
+      services: [
+        { name: 'Fleet Wash', route: '/booking/car-wash', icon: CarIcon },
+        { name: 'Corporate Office Cleaning', route: '/booking/corporate-office-cleaning', icon: BuildingIcon },
+        { name: 'Office Deep Cleaning Solutions', route: '/booking/office-deep-clean', icon: SparklesIcon }
+      ]
+    }
+  ];
+
+  const ehailingCategories = [
+    {
+      id: 'rides',
+      title: 'People rides',
+      subtitle: 'E-hailing pickup to destination',
+      icon: CarIcon,
+      gradient: 'from-teal-500 to-emerald-600',
+      services: [{ name: 'Eco Ride', route: '/booking/taxi', icon: CarIcon }]
+    },
+    {
+      id: 'goods',
+      title: 'Goods delivery',
+      subtitle: 'Parcels & packages',
+      icon: PackageIcon,
+      gradient: 'from-amber-500 to-orange-600',
+      services: [{ name: 'Parcel Delivery', route: '/booking/delivery', icon: PackageIcon }]
+    },
+    {
+      id: 'relocation',
+      title: 'Relocation',
+      subtitle: 'Home & office moves',
+      icon: CarIcon,
+      gradient: 'from-orange-500 to-rose-600',
+      services: [
+        { name: 'Relocation Transport', route: '/booking/relocation-transport', icon: CarIcon }
+      ]
+    }
+  ];
+
+  const bookingCategories = useMemo(
+    () => (mode === 'ehailing' ? ehailingCategories : cleaningCategories),
+    [mode]
+  );
+
+  useEffect(() => {
+    setExpandedCategory(null);
+  }, [mode]);
+
+  const handleServiceSelect = (route: string) => {
+    setShowBookingPicker(false);
+    setExpandedCategory(null);
+    navigate(route);
+  };
+  const toggleCategory = (id: string) => {
+    setExpandedCategory(expandedCategory === id ? null : id);
+  };
+  const renderNavItem = (item: (typeof leftNavItems)[0]) => {
+    const isActive =
+      location.pathname === item.path ||
+      (item.path === '/service-history' && location.pathname.startsWith('/service-'));
+    const Icon = item.icon;
+    return (
+      <NavLink
+        key={item.path}
+        to={item.path}
+        aria-label={item.label}
+        aria-current={isActive ? 'page' : undefined}
+        className="relative flex flex-col items-center justify-center w-16 h-16 rounded-2xl z-10">
+
+        {isActive &&
+        <motion.div
+          layoutId="nav-pill"
+          className="absolute inset-0 bg-eco-50 dark:bg-eco-900/20 rounded-2xl -z-10"
+          transition={{
+            type: 'spring',
+            stiffness: 300,
+            damping: 30
+          }} />
+
+        }
+        <motion.div
+          animate={{
+            scale: isActive ? 1.1 : 1,
+            color: isActive ? 'var(--color-eco-600)' : 'var(--color-slate-400)'
+          }}
+          className={`flex flex-col items-center ${isActive ? 'text-eco-600 dark:text-eco-400' : 'text-slate-400 dark:text-slate-500'}`}>
+
+          <Icon size={22} strokeWidth={isActive ? 2.5 : 2} aria-hidden />
+          <span className="text-xs font-medium mt-0.5">{item.label}</span>
+        </motion.div>
+      </NavLink>);
+
+  };
+  return (
+    <>
+      <nav className="fixed bottom-0 w-full glass-nav z-50 pb-safe" aria-label="Primary">
+        <div className="max-w-md md:max-w-2xl lg:max-w-4xl mx-auto flex justify-around items-center h-20 px-1 relative">
+          {leftNavItems.map(renderNavItem)}
+          <div className="w-14" />
+          {rightNavItems.map(renderNavItem)}
+
+          {/* Floating Action Button */}
+          <div className="absolute left-1/2 -translate-x-1/2 -top-6">
+            <motion.button
+              type="button"
+              aria-label="Book a service"
+              aria-haspopup="dialog"
+              aria-expanded={showBookingPicker}
+              onClick={() => setShowBookingPicker(true)}
+              whileTap={{
+                scale: 0.95
+              }}
+              className="flex flex-col items-center justify-center">
+
+              <motion.div
+                animate={{
+                  rotate: showBookingPicker ? 45 : 0
+                }}
+                transition={{
+                  type: 'spring',
+                  stiffness: 300,
+                  damping: 20
+                }}
+                className="w-14 h-14 rounded-full bg-gradient-to-tr from-eco-500 to-teal-500 shadow-lg shadow-eco-500/30 flex items-center justify-center text-white">
+
+                <PlusCircleIcon size={28} aria-hidden />
+              </motion.div>
+              <span className="text-xs font-medium mt-0.5 text-slate-500 dark:text-slate-400 bg-white/80 dark:bg-slate-900/80 px-2 rounded-full backdrop-blur-sm">
+                {isEhailing ? 'Ride' : 'Book'}
+              </span>
+            </motion.button>
+          </div>
+        </div>
+      </nav>
+
+      {/* Booking Category Picker */}
+      <AnimatePresence>
+        {showBookingPicker &&
+        <div className="fixed inset-0 z-[60] flex items-end justify-center" role="presentation">
+            <motion.div
+            initial={{
+              opacity: 0
+            }}
+            animate={{
+              opacity: 1
+            }}
+            exit={{
+              opacity: 0
+            }}
+            className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm"
+            onClick={() => {
+              setShowBookingPicker(false);
+              setExpandedCategory(null);
+            }} />
+
+            <motion.div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="book-service-title"
+            initial={{
+              y: '100%'
+            }}
+            animate={{
+              y: 0
+            }}
+            exit={{
+              y: '100%'
+            }}
+            transition={{
+              type: 'spring',
+              damping: 28,
+              stiffness: 350
+            }}
+            className="relative w-full max-w-md md:max-w-lg bg-white dark:bg-slate-900 rounded-t-3xl shadow-2xl overflow-hidden"
+            onClick={(e) => e.stopPropagation()}>
+
+              {/* Handle bar */}
+              <div className="flex justify-center pt-3 pb-1">
+                <div className="w-10 h-1 bg-slate-200 dark:bg-slate-700 rounded-full" />
+              </div>
+
+              <div className="px-5 pb-2 flex items-center justify-between">
+                <div>
+                  <h2 id="book-service-title" className="text-xl font-bold text-slate-800 dark:text-white">
+                    Book {meta.label}
+                  </h2>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                    {isEhailing ? 'Rides, parcels & moves' : 'Wash, home & commercial cleaning'}
+                  </p>
+                </div>
+                <motion.button
+                type="button"
+                aria-label="Close booking picker"
+                whileTap={{
+                  scale: 0.9
+                }}
+                onClick={() => {
+                  setShowBookingPicker(false);
+                  setExpandedCategory(null);
+                }}
+                className="p-2 bg-slate-100 dark:bg-slate-800 rounded-full">
+
+                  <XIcon size={18} className="text-slate-500" aria-hidden />
+                </motion.button>
+              </div>
+
+              <div className="px-5 pb-2">
+                <IndustryModeSwitcher showTagline={false} />
+              </div>
+
+              <div className="px-5 pb-8 pt-2 space-y-2.5 max-h-[70vh] overflow-y-auto">
+                {bookingCategories.map((category) => {
+                const CatIcon = category.icon;
+                const isExpanded = expandedCategory === category.id;
+                return (
+                  <motion.div
+                    key={category.id}
+                    layout
+                    className="rounded-2xl overflow-hidden bg-slate-50 dark:bg-slate-800/50">
+
+                      <motion.button
+                      type="button"
+                      aria-expanded={isExpanded}
+                      aria-controls={`book-category-${category.id}`}
+                      whileTap={{
+                        scale: 0.98
+                      }}
+                      onClick={() => toggleCategory(category.id)}
+                      className="w-full p-4 flex items-center justify-between">
+
+                        <div className="flex items-center">
+                          <div
+                          className={`bg-gradient-to-br ${category.gradient} p-3 rounded-xl mr-3.5 shadow-md`}>
+
+                            <CatIcon size={20} className="text-white" />
+                          </div>
+                          <div className="text-left">
+                            <h3 className="font-bold text-sm text-slate-800 dark:text-slate-100">
+                              {category.title}
+                            </h3>
+                            <p className="text-xs text-slate-500 dark:text-slate-400">
+                              {category.subtitle}
+                            </p>
+                          </div>
+                        </div>
+                        <motion.div
+                        animate={{
+                          rotate: isExpanded ? 90 : 0
+                        }}
+                        transition={{
+                          type: 'spring',
+                          stiffness: 300,
+                          damping: 25
+                        }}>
+
+                          <ChevronRightIcon
+                          size={18}
+                          className="text-slate-400" />
+
+                        </motion.div>
+                      </motion.button>
+
+                      <AnimatePresence>
+                        {isExpanded &&
+                      <motion.div
+                        id={`book-category-${category.id}`}
+                        role="region"
+                        aria-label={`${category.title} services`}
+                        initial={{
+                          height: 0,
+                          opacity: 0
+                        }}
+                        animate={{
+                          height: 'auto',
+                          opacity: 1
+                        }}
+                        exit={{
+                          height: 0,
+                          opacity: 0
+                        }}
+                        transition={{
+                          type: 'spring',
+                          damping: 25,
+                          stiffness: 300
+                        }}
+                        className="overflow-hidden">
+
+                            <div className="px-3 pb-3 space-y-1">
+                              {category.services.map((service, idx) => {
+                            const SvcIcon = service.icon;
+                            return (
+                              <motion.button
+                                key={service.name}
+                                type="button"
+                                initial={{
+                                  opacity: 0,
+                                  x: -10
+                                }}
+                                animate={{
+                                  opacity: 1,
+                                  x: 0
+                                }}
+                                transition={{
+                                  delay: idx * 0.05
+                                }}
+                                whileTap={{
+                                  scale: 0.97
+                                }}
+                                onClick={() =>
+                                handleServiceSelect(service.route)
+                                }
+                                className="w-full flex items-center p-3 rounded-xl bg-white dark:bg-slate-800 hover:bg-eco-50 dark:hover:bg-slate-700/50 transition-colors">
+
+                                    <div
+                                  className={`${category.iconBg} p-2 rounded-lg mr-3`}>
+
+                                      <SvcIcon
+                                    size={16}
+                                    className={category.iconColor} />
+
+                                    </div>
+                                    <span className="text-sm font-medium text-slate-700 dark:text-slate-200 flex-1 text-left">
+                                      {service.name}
+                                    </span>
+                                    <ChevronRightIcon
+                                  size={14}
+                                  className="text-slate-300 dark:text-slate-600" />
+
+                                  </motion.button>);
+
+                          })}
+                            </div>
+                          </motion.div>
+                      }
+                      </AnimatePresence>
+                    </motion.div>);
+
+              })}
+
+                {/* Browse all link */}
+                <motion.button
+                whileTap={{
+                  scale: 0.97
+                }}
+                onClick={() => {
+                  setShowBookingPicker(false);
+                  setExpandedCategory(null);
+                  navigate('/services');
+                }}
+                className="w-full py-3 text-center text-sm font-bold text-eco-600 dark:text-eco-400 hover:bg-eco-50 dark:hover:bg-eco-900/20 rounded-xl transition-colors">
+
+                  Browse All Services
+                </motion.button>
+              </div>
+            </motion.div>
+          </div>
+        }
+      </AnimatePresence>
+    </>);
+
+};
+export default Navigation;

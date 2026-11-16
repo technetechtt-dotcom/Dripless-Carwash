@@ -1,0 +1,73 @@
+/* PLEASE NOTE: THESE TAILWIND IMPORTS SHOULD NEVER BE DELETED */
+@import 'tailwindcss/base';
+@import 'tailwindcss/components';
+@import 'tailwindcss/utilities';
+
+/* DO NOT DELETE THESE TAILWIND IMPORTS, OTHERWISE THE STYLING WILL NOT RENDER AT ALL */
+
+@layer base {
+  body {
+    @apply bg-slate-50 text-slate-900 antialiased transition-colors duration-300;
+  }
+  .dark body {
+    @apply bg-slate-950 text-slate-50;
+  }
+  /* Accessibility: Focus-visible styles */
+  button:focus-visible,
+  a:focus-visible,
+  input:focus-visible,
+  select:focus-visible,
+  textarea:focus-visible,
+  [role="button"]:focus-visible {
+    @apply ring-2 ring-eco-500 ring-offset-2 outline-none;
+  }
+  .dark button:focus-visible,
+  .dark a:focus-visible,
+  .dark input:focus-visible,
+  .dark select:focus-visible,
+  .dark textarea:focus-visible,
+  .dark [role="button"]:focus-visible {
+    ring-offset-color: theme('colors.slate.900');
+  }
+}
+@layer components {
+  .glass {
+    @apply bg-white/70 backdrop-blur-xl border border-white/40 shadow-sm transition-all duration-300;
+  }
+  .dark .glass {
+    @apply bg-slate-900/60 border-white/10 shadow-none;
+  }
+  .glass-card {
+    @apply glass rounded-2xl hover:shadow-md hover:bg-white/80 dark:hover:bg-slate-800/60 transition-all duration-300;
+  }
+  .glass-nav {
+    @apply bg-white/80 dark:bg-slate-950/80 backdrop-blur-lg border-t border-slate-200/50 dark:border-slate-800/50;
+  }
+  .btn-primary {
+    @apply bg-gradient-to-r from-eco-500 to-teal-600 text-white shadow-lg shadow-eco-500/20 
+    hover:shadow-eco-500/30 active:scale-[0.98] transition-all duration-200 rounded-xl font-medium;
+  }
+  .btn-glass {
+    @apply glass hover:bg-white/90 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 
+    active:scale-[0.98] transition-all duration-200 rounded-xl font-medium;
+  }
+}
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+}
+::-webkit-scrollbar-track {
+  @apply bg-transparent;
+}
+::-webkit-scrollbar-thumb {
+  @apply bg-slate-200 dark:bg-slate-700 rounded-full;
+}
+/* Respect reduced motion preferences */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

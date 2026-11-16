@@ -1,0 +1,131 @@
+openapi: 3.0.3
+info:
+  title: Dripless Backend API
+  version: 0.3.0
+  description: Secured Postgres-backed Dripless API (auth, bookings, ops, payments scaffold, evidence, MFA).
+servers:
+  - url: http://localhost:4000
+paths:
+  /health:
+    get:
+      summary: Health check
+      responses:
+        '200':
+          description: OK
+  /auth/customer/signup:
+    post:
+      summary: Create a customer account
+      responses:
+        '201':
+          description: Account created with session
+  /auth/customer/login:
+    post:
+      summary: Customer login
+      responses:
+        '200':
+          description: Authenticated session
+        '401':
+          description: Invalid credentials
+  /auth/driver/signup:
+    post:
+      summary: Create a driver account
+  /auth/driver/login:
+    post:
+      summary: Driver login
+  /auth/ops-admin/login:
+    post:
+      summary: Ops admin login
+  /auth/refresh:
+    post:
+      summary: Rotate refresh token
+  /auth/logout:
+    post:
+      summary: Revoke current access session
+  /auth/mfa/setup:
+    post:
+      summary: Start ops TOTP MFA enrollment
+  /auth/mfa/verify:
+    post:
+      summary: Confirm MFA TOTP and enable
+  /auth/mfa/disable:
+    post:
+      summary: Disable MFA with TOTP or backup code
+  /bookings:
+    post:
+      summary: Create booking (server-priced, ownership enforced)
+    get:
+      summary: List bookings for authenticated role
+  /bookings/{bookingId}/status:
+    patch:
+      summary: Update booking status
+  /bookings/{bookingId}/tracking:
+    get:
+      summary: Live tracking snapshot
+  /bookings/{bookingId}/evidence:
+    get:
+      summary: List wash evidence
+    post:
+      summary: Upload wash evidence / set completion PIN
+  /driver/jobs/incoming:
+    post:
+      summary: Next assigned job for driver (or null)
+  /driver/jobs/{bookingId}/accept:
+    post:
+      summary: Driver accepts job
+  /driver/jobs/{bookingId}/decline:
+    post:
+      summary: Driver declines and triggers redispatch
+  /driver/location:
+    patch:
+      summary: Update driver GPS
+  /ops/dashboard/summary:
+    get:
+      summary: Ops dashboard counters
+  /ops/customers:
+    get:
+      summary: List customers
+  /ops/drivers:
+    get:
+      summary: List drivers
+  /ops/bookings:
+    get:
+      summary: List bookings
+  /ops/specials:
+    get:
+      summary: List promotions
+    post:
+      summary: Create promotion
+  /ops/notifications/broadcast:
+    post:
+      summary: Broadcast notification
+  /payments/intent:
+    post:
+      summary: Create payment intent (SA PSP scaffold/stub)
+  /payments/webhooks/stub:
+    post:
+      summary: Stub payment webhook
+  /payments/webhooks/paystack:
+    post:
+      summary: Paystack webhook (scaffold)
+  /payments/webhooks/payfast:
+    post:
+      summary: PayFast webhook (scaffold)
+  /payments/webhooks/ozow:
+    post:
+      summary: Ozow webhook (scaffold)
+  /notifications:
+    get:
+      summary: List notifications for auth user
+    post:
+      summary: Create notification
+  /specials:
+    get:
+      summary: Active specials for role
+  /specials/redeem:
+    post:
+      summary: Redeem promo code
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
