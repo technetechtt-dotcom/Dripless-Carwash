@@ -46,13 +46,14 @@ export function mapBookingDto(booking: {
   scheduledAt?: Date | null;
   createdAt: Date;
   updatedAt: Date;
-  customer?: { name?: string | null; rating?: number | null } | null;
+  customer?: { name?: string | null; phone?: string | null; rating?: number | null } | null;
   ratings?: Array<{ stars: number }> | null;
 }) {
   return {
     id: booking.id,
     customerId: booking.customerId,
     customerName: booking.customer?.name,
+    customerPhone: booking.customer?.phone ?? null,
     customerRating:
       typeof booking.customer?.rating === 'number' ? booking.customer.rating : undefined,
     rating: booking.ratings?.[0]?.stars,

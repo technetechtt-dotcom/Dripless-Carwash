@@ -141,12 +141,19 @@ bookingsRouter.post(
         }
       }
 
+      const rawTime = String(req.body.scheduledTime || '').trim();
+      const normalizedTime =
+        !rawTime || /^asap$/i.test(rawTime)
+          ? null
+          : /^\d{1,2}:\d{2}$/.test(rawTime)
+            ? `${rawTime.length === 4 ? `0${rawTime}` : rawTime}:00`.slice(0, 8)
+            : rawTime;
       const scheduledAtInput =
         req.body.scheduledAt ||
-        (req.body.scheduledDate && req.body.scheduledTime
-          ? `${req.body.scheduledDate}T${req.body.scheduledTime}`
+        (req.body.scheduledDate && normalizedTime
+          ? `${req.body.scheduledDate}T${normalizedTime}`
           : null);
-      const scheduledAt = scheduledAtInput ? new Date(scheduledAtInput) : new Date();
+      const scheduledAt = scheduledAtInput ? new Date(scheduledAtInput) : new Date(Date.now() + 30 * 60_000);
       if (Number.isNaN(scheduledAt.getTime())) throw new HttpError(400, 'Invalid scheduled time');
       if (scheduledAt < new Date(Date.now() - 60_000)) {
         throw new HttpError(400, 'Booking time cannot be in the past');
@@ -231,16 +238,8 @@ bookingsRouter.post(
         return created;
       });
 
-      const assigned = await autoAssignDriver(booking.id);
-      if (!assigned) {
-        await createOrRefreshDispatchIncident(
-          booking.id,
-          'No available verified driver for auto-dispatch.',
-          'medium'
-        );
-      }
+      // Dispatch only after payment succeeds (see payments/service). Unpaid jobs stay PENDING.
       publishEvent('booking.created', { bookingId: booking.id, customerId });
-      if (assigned) publishEvent('booking.assigned', { bookingId: booking.id, driverId: assigned.driverId });
 
       const fresh = await prisma.booking.findUnique({
         where: { id: booking.id },

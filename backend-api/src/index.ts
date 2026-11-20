@@ -45,7 +45,8 @@ async function main() {
     startJobWorker();
   }
   const app = createApp();
-  app.listen(env.PORT, () => {
+  // Bind all interfaces so cloud hosts (Render, etc.) can reach the process.
+  app.listen(env.PORT, '0.0.0.0', () => {
     logger.info('api_listening', { port: env.PORT, demoMode: env.demoMode, env: env.NODE_ENV });
   });
 }

@@ -381,8 +381,19 @@ export async function assertWashCompletable(bookingId: string) {
     include: { washChecklist: true }
   });
   if (!booking) throw new HttpError(404, 'Booking not found');
-  if (!booking.serviceSlug.includes('wash') && booking.serviceSlug !== 'car-wash') return;
-  if (env.demoMode) return;
+  const slug = booking.serviceSlug.toLowerCase();
+  const isWashOrCleaning =
+    slug.includes('wash') ||
+    slug === 'car-wash' ||
+    slug.includes('clean') ||
+    slug.includes('mattress') ||
+    slug.includes('upholstery') ||
+    slug.includes('carpet') ||
+    slug.includes('home');
+  // Rides/parcels do not require wash proof
+  if (!isWashOrCleaning) return;
+  // Strict production always enforces; demo/staging may soft-skip for UX demos
+  if (env.demoMode && !env.isStrictProduction) return;
   if (booking.completionProofOverrideAt) return;
 
   const evidence = await prisma.bookingEvidence.findMany({
@@ -390,10 +401,10 @@ export async function assertWashCompletable(bookingId: string) {
   });
   const kinds = new Set(evidence.map((item) => item.kind));
   if (!kinds.has('BEFORE') || !kinds.has('AFTER')) {
-    throw new HttpError(400, 'Wash completion requires verified BEFORE and AFTER photos');
+    throw new HttpError(400, 'Completion requires verified BEFORE and AFTER photos');
   }
   if (!booking.completionPinVerifiedAt) {
-    throw new HttpError(400, 'Wash completion requires a customer-verified completion PIN');
+    throw new HttpError(400, 'Completion requires a customer-verified completion PIN');
   }
   const checklist = booking.washChecklist;
   if (
@@ -403,6 +414,6 @@ export async function assertWashCompletable(bookingId: string) {
     !checklist.glassDone ||
     !checklist.finalInspected
   ) {
-    throw new HttpError(400, 'Wash completion requires the quality checklist');
+    throw new HttpError(400, 'Completion requires the quality checklist');
   }
 }

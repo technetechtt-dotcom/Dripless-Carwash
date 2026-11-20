@@ -227,8 +227,10 @@ driversRouter.post(
       const booking = await prisma.booking.findFirst({
         where: {
           driverId,
-          status: { in: ['PENDING', 'CONFIRMED'] }
+          status: { in: ['PENDING', 'CONFIRMED'] },
+          paymentStatus: 'PAID'
         },
+        include: { customer: true },
         orderBy: { createdAt: 'asc' }
       });
 
@@ -292,7 +294,11 @@ driversRouter.post(
         return row;
       });
       publishEvent('driver.accepted', { bookingId, driverId });
-      res.json(mapBooking(updated));
+      const withCustomer = await prisma.booking.findUnique({
+        where: { id: bookingId },
+        include: { customer: true }
+      });
+      res.json(mapBooking(withCustomer ?? updated));
     } catch (error) {
       next(error);
     }
@@ -422,7 +428,11 @@ driversRouter.patch(
       });
       publishEvent('booking.status', { bookingId, status: req.body.status, driverId });
       if (req.body.status === 'COMPLETED') await accrueDriverEarning(bookingId);
-      res.json(mapBooking(updated));
+      const withCustomer = await prisma.booking.findUnique({
+        where: { id: bookingId },
+        include: { customer: true }
+      });
+      res.json(mapBooking(withCustomer ?? updated));
     } catch (error) {
       next(error);
     }

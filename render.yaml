@@ -1,27 +1,22 @@
-# Dripless — Render Blueprint (Neon Postgres + Render Redis + API + static apps)
-# Neon is external: paste the Neon pooled DATABASE_URL when Render prompts for it.
-# Docs: docs/RENDER_NEON.md
-#
-# Create: Dashboard → New → Blueprint → connect this repo → select render.yaml
+# Backend go-live on Render + existing Neon project "dripless wash"
+# Dashboard → New → Blueprint → this file
+# Region oregon matches Neon us-west-2.
 
 services:
-  # ── Redis (rate limits, jobs, locks) ───────────────────────────────────────
   - type: keyvalue
     name: dripless-redis
     plan: free
     maxmemoryPolicy: noeviction
-    ipAllowList: [] # only Render private network
+    ipAllowList: []
 
-  # ── API (+ in-process worker via PROCESS_ROLE=all for free staging) ────────
   - type: web
     name: dripless-api
     runtime: node
     plan: free
-    region: frankfurt
+    region: oregon
     rootDir: backend-api
     buildCommand: npm ci --legacy-peer-deps && npx prisma generate && npm run build
     preDeployCommand: npx prisma migrate deploy
-    # Seeds demo users once on first successful deploy (DemoPass123!)
     initialDeployHook: npx tsx prisma/seed.ts
     startCommand: node dist/index.js
     healthCheckPath: /health
@@ -50,7 +45,7 @@ services:
         generateValue: true
       - key: COMPLETION_PIN_PEPPER
         generateValue: true
-      # Neon connection string (Dashboard → Connection details → pooled + sslmode=require)
+      # Paste Neon pooled URL (see backend-api/.env.neon locally)
       - key: DATABASE_URL
         sync: false
       - key: REDIS_URL
@@ -58,72 +53,18 @@ services:
           name: dripless-redis
           type: keyvalue
           property: connectionString
-      # Set after first deploy to the real onrender.com URLs (see docs/RENDER_NEON.md)
+      # Defaults so API boots; update after frontends go live
       - key: PUBLIC_API_URL
-        sync: false
+        value: https://dripless-api.onrender.com
       - key: CUSTOMER_APP_URL
-        sync: false
+        value: http://localhost:5173
       - key: DRIVER_APP_URL
-        sync: false
+        value: http://localhost:5174
       - key: OPS_APP_URL
-        sync: false
+        value: http://localhost:5175
       - key: CORS_ORIGINS
-        sync: false
+        value: http://localhost:5173,http://localhost:5174,http://localhost:5175
       - key: WEBAUTHN_RP_ID
-        sync: false
+        value: localhost
       - key: WEBAUTHN_ORIGIN
-        sync: false
-
-  # ── Customer SPA ───────────────────────────────────────────────────────────
-  - type: web
-    name: dripless-customer
-    runtime: static
-    rootDir: Dripless Customer
-    buildCommand: npm ci --legacy-peer-deps && VITE_API_BASE_URL="https://${VITE_API_HOST}" npm run build
-    staticPublishPath: dist
-    routes:
-      - type: rewrite
-        source: /*
-        destination: /index.html
-    envVars:
-      - key: VITE_API_HOST
-        fromService:
-          name: dripless-api
-          type: web
-          property: host
-
-  # ── Driver SPA ─────────────────────────────────────────────────────────────
-  - type: web
-    name: dripless-driver
-    runtime: static
-    rootDir: Dripless Driver
-    buildCommand: npm ci --legacy-peer-deps && VITE_API_BASE_URL="https://${VITE_API_HOST}" npm run build
-    staticPublishPath: dist
-    routes:
-      - type: rewrite
-        source: /*
-        destination: /index.html
-    envVars:
-      - key: VITE_API_HOST
-        fromService:
-          name: dripless-api
-          type: web
-          property: host
-
-  # ── Ops Admin SPA ──────────────────────────────────────────────────────────
-  - type: web
-    name: dripless-ops
-    runtime: static
-    rootDir: Dripless Ops Admin
-    buildCommand: npm ci --legacy-peer-deps && VITE_API_BASE_URL="https://${VITE_API_HOST}" npm run build
-    staticPublishPath: dist
-    routes:
-      - type: rewrite
-        source: /*
-        destination: /index.html
-    envVars:
-      - key: VITE_API_HOST
-        fromService:
-          name: dripless-api
-          type: web
-          property: host
+        value: http://localhost:5175

@@ -22,6 +22,26 @@ import {
   verifyOzowNotifySignature,
   verifyOzowTransactionByReference
 } from './ozow.js';
+import { autoAssignDriver, createOrRefreshDispatchIncident } from '../bookings/dispatch.js';
+
+async function dispatchAfterPayment(bookingId: string | null | undefined) {
+  if (!bookingId) return;
+  try {
+    const assigned = await autoAssignDriver(bookingId);
+    if (!assigned) {
+      await createOrRefreshDispatchIncident(
+        bookingId,
+        'Payment received but no available verified driver for auto-dispatch.',
+        'medium'
+      );
+    }
+  } catch (error) {
+    logger.error('dispatch_after_payment_failed', {
+      bookingId,
+      error: error instanceof Error ? error.message : String(error)
+    });
+  }
+}
 
 export function payloadHash(payload: unknown): string {
   const bytes = Buffer.isBuffer(payload) ? payload : Buffer.from(JSON.stringify(payload));
@@ -55,9 +75,24 @@ export async function createPaymentIntent(input: {
     }
   }
 
-  const provider = input.provider || env.PAYMENTS_PROVIDER;
+  let provider = input.provider || env.PAYMENTS_PROVIDER;
+  // Fall back to stub when Ozow/Paystack keys are missing outside strict production
   if (
-    env.isProduction &&
+    provider === 'ozow' &&
+    !env.OZOW_SITE_CODE &&
+    !env.isStrictProduction
+  ) {
+    provider = 'stub';
+  }
+  if (
+    provider === 'paystack' &&
+    !env.PAYSTACK_SECRET_KEY &&
+    !env.isStrictProduction
+  ) {
+    provider = 'stub';
+  }
+  if (
+    env.isStrictProduction &&
     provider !== 'paystack' &&
     provider !== 'ozow' &&
     provider !== 'wallet'
@@ -251,6 +286,7 @@ export async function applyPaymentSuccess(input: {
     title: 'Payment received',
     message: 'Your Dripless payment was successful.'
   }).catch(() => undefined);
+  await dispatchAfterPayment(updated.bookingId);
   return updated;
 }
 
@@ -543,9 +579,9 @@ export async function completeWalletPayment(input: {
   bookingId: string;
   amountCents: number;
 }) {
-  return prisma.$transaction(async (tx) => {
-    const payment = await tx.payment.findUniqueOrThrow({ where: { id: input.paymentId } });
-    if (payment.status === 'PAID') return payment;
+  const payment = await prisma.$transaction(async (tx) => {
+    const existing = await tx.payment.findUniqueOrThrow({ where: { id: input.paymentId } });
+    if (existing.status === 'PAID') return existing;
     await applyWalletEntry(tx, {
       userId: input.userId,
       amountCents: input.amountCents,
@@ -569,6 +605,10 @@ export async function completeWalletPayment(input: {
       data: { status: 'PAID', paidAt: new Date(), failureReason: null }
     });
   }, { isolationLevel: 'Serializable' });
+  if (payment.status === 'PAID') {
+    await dispatchAfterPayment(input.bookingId);
+  }
+  return payment;
 }
 
 export function mapPaymentDto(row: {

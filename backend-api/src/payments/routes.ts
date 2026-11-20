@@ -105,7 +105,7 @@ paymentsRouter.post(
 );
 
 paymentsRouter.get('/stub-checkout/:paymentId', async (req, res) => {
-  if (env.isProduction) return res.status(404).send('Not found');
+  if (env.isStrictProduction) return res.status(404).send('Not found');
   res.type('html').send(`<!doctype html>
 <html><body style="font-family:sans-serif;padding:2rem">
   <h1>Dripless stub checkout</h1>
@@ -119,7 +119,7 @@ paymentsRouter.get('/stub-checkout/:paymentId', async (req, res) => {
 
 paymentsRouter.post('/webhooks/stub', async (req, res, next) => {
   try {
-    if (env.isProduction) throw new HttpError(404, 'Not found');
+    if (env.isStrictProduction) throw new HttpError(404, 'Not found');
     const paymentId = String(req.body.paymentId || req.query.paymentId || '');
     if (!paymentId) throw new HttpError(400, 'paymentId required');
     const eventId = `stub_${paymentId}`;

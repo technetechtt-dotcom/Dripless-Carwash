@@ -34,12 +34,15 @@ const BookingConfirmation = () => {
       specialDiscountAmount: details.specialDiscountAmount,
       appliedSpecialPromoCode: details.appliedSpecialPromoCode ?? details.appliedSpecial?.promoCode ?? null,
       date: details.date || new Date().toISOString().slice(0, 10),
-      time: details.time || 'ASAP',
+      time:
+        details.time && !/^asap$/i.test(details.time)
+          ? details.time
+          : new Date(Date.now() + 30 * 60_000).toTimeString().slice(0, 5),
       location: details.location,
       pickupCoordinates: details.pickupCoordinates ?? null,
       destinationLocation: details.destinationLocation ?? null,
       destinationCoordinates: details.destinationCoordinates ?? null,
-      paymentMethod: details.paymentMethod === 'wallet' ? 'wallet' : 'ozow'
+      paymentMethod: details.paymentMethod === 'wallet' ? 'wallet' : 'stub'
     };
   }, [details]);
 
@@ -49,7 +52,7 @@ const BookingConfirmation = () => {
       const current = existing || booking || await addBooking(createInput());
       setBooking(current);
       setPhase('payment');
-      const provider = current.paymentMethod === 'wallet' ? 'wallet' : 'ozow';
+      const provider = current.paymentMethod === 'wallet' ? 'wallet' : 'stub';
       const payment = await paymentsApi.createIntent(current.id, provider);
       if (payment.status === 'PAID') {
         setPhase('paid');
@@ -95,7 +98,7 @@ const BookingConfirmation = () => {
           <div className="flex justify-between gap-4"><span className="font-bold text-slate-800 dark:text-white">{input.service} · {input.option}</span><strong className="dark:text-white">{formatCurrency(input.price)}</strong></div>
           <div className="flex gap-3 text-sm text-slate-600 dark:text-slate-300"><CalendarIcon size={17} />{input.date} at {input.time}</div>
           <div className="flex gap-3 text-sm text-slate-600 dark:text-slate-300"><MapPinIcon size={17} />{input.location}</div>
-          <div className="flex gap-3 text-sm text-slate-600 dark:text-slate-300"><CreditCardIcon size={17} />{input.paymentMethod === 'wallet' ? 'Dripless Wallet' : 'Ozow instant EFT'}</div>
+          <div className="flex gap-3 text-sm text-slate-600 dark:text-slate-300"><CreditCardIcon size={17} />{input.paymentMethod === 'wallet' ? 'Dripless Wallet' : 'Secure checkout'}</div>
         </div> : null}
 
         {phase === 'error' ? <div className="grid grid-cols-2 gap-3">

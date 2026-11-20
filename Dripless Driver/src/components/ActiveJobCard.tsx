@@ -22,7 +22,12 @@ export function ActiveJobCard({ job, onStatusUpdate }: ActiveJobCardProps) {
     (m) => !m.read && m.sender === 'customer'
   ).length;
   const handleCallCustomer = () => {
-    window.location.href = 'tel:+15550000000';
+    const phone = job.customerPhone?.replace(/\s+/g, '');
+    if (!phone) {
+      window.alert('Customer phone number is not available for this job.');
+      return;
+    }
+    window.location.href = `tel:${phone}`;
   };
   const handleStartNavigation = () => {
     const from = job.pickupCoordinates ?? { lat: -26.2041, lng: 28.0473 };

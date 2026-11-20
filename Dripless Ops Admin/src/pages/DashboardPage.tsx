@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { adminApi, notificationApi, subscribePlatformEvents, trackingApi } from '@shared/api';
+import { adminApi, complaintApi, notificationApi, subscribePlatformEvents, trackingApi } from '@shared/api';
 import { isBookingLifecycleEvent } from '@shared/events';
 import { useNavigate, useParams } from 'react-router-dom';
 import type {
@@ -60,6 +60,7 @@ import { BookingsSection } from './dashboard/sections/BookingsSection';
 import { DispatchSection } from './dashboard/sections/DispatchSection';
 import { SpecialsSection } from './dashboard/sections/SpecialsSection';
 import { IncidentsSection } from './dashboard/sections/IncidentsSection';
+import { ComplaintsSection } from './dashboard/sections/ComplaintsSection';
 import { InboxSection } from './dashboard/sections/InboxSection';
 import { CommunicationsSection } from './dashboard/sections/CommunicationsSection';
 import { AuditSection } from './dashboard/sections/AuditSection';
@@ -99,6 +100,17 @@ export const DashboardPage = ({ tabOverride }: DashboardPageProps) => {
   >([]);
   const [bookings, setBookings] = useState<BookingContract[]>([]);
   const [incidents, setIncidents] = useState<DispatchIncident[]>([]);
+  const [complaints, setComplaints] = useState<
+    Array<{
+      id: string;
+      bookingId?: string | null;
+      category: string;
+      body: string;
+      status: string;
+      resolution?: string | null;
+      createdAt: string;
+    }>
+  >([]);
   const [specials, setSpecials] = useState<OpsSpecial[]>([]);
   const [activity, setActivity] = useState<OpsActivityItem[]>([]);
   const [notifications, setNotifications] = useState<NotificationContract[]>([]);
@@ -242,7 +254,8 @@ export const DashboardPage = ({ tabOverride }: DashboardPageProps) => {
         incidentsData,
         specialsData,
         activityData,
-        notificationsData
+        notificationsData,
+        complaintsData
       ] =
         await Promise.all([
           adminApi.getDashboardSummary(),
@@ -255,7 +268,8 @@ export const DashboardPage = ({ tabOverride }: DashboardPageProps) => {
           Promise.resolve([]),
           canManageSpecials ? adminApi.listSpecials() : Promise.resolve([]),
           hasPermission('activity:read') ? adminApi.listActivity(200) : Promise.resolve([]),
-          notificationApi.listNotifications('ops_admin', admin.id)
+          notificationApi.listNotifications('ops_admin', admin.id),
+          canViewIncidents ? complaintApi.list() : Promise.resolve([])
         ]);
       setSummary(summaryData);
       setCustomers(customersData);
@@ -266,6 +280,17 @@ export const DashboardPage = ({ tabOverride }: DashboardPageProps) => {
       setSpecials(specialsData);
       setActivity(activityData);
       setNotifications(notificationsData);
+      setComplaints(
+        (complaintsData as Array<Record<string, unknown>>).map((row) => ({
+          id: String(row.id),
+          bookingId: (row.bookingId as string | null | undefined) ?? null,
+          category: String(row.category ?? 'OTHER'),
+          body: String(row.body ?? ''),
+          status: String(row.status ?? 'OPEN'),
+          resolution: (row.resolution as string | null | undefined) ?? null,
+          createdAt: String(row.createdAt ?? '')
+        }))
+      );
       setLastSyncedAt(new Date().toISOString());
       hasLoadedRef.current = true;
     } catch (loadError) {
@@ -314,13 +339,40 @@ export const DashboardPage = ({ tabOverride }: DashboardPageProps) => {
   const refreshIncidents = useCallback(async () => {
     if (!admin || !canViewIncidents) return;
     try {
-      const incidentsData = await adminApi.listIncidents(showResolvedIncidents);
+      const [incidentsData, complaintsData] = await Promise.all([
+        adminApi.listIncidents(showResolvedIncidents),
+        complaintApi.list()
+      ]);
       setIncidents(incidentsData);
+      setComplaints(
+        complaintsData.map((row) => ({
+          id: String(row.id),
+          bookingId: (row.bookingId as string | null | undefined) ?? null,
+          category: String(row.category ?? 'OTHER'),
+          body: String(row.body ?? ''),
+          status: String(row.status ?? 'OPEN'),
+          resolution: (row.resolution as string | null | undefined) ?? null,
+          createdAt: String(row.createdAt ?? '')
+        }))
+      );
       setLastSyncedAt(new Date().toISOString());
     } catch {
       /* keep last known incidents */
     }
   }, [admin, canViewIncidents, showResolvedIncidents]);
+
+  const updateComplaintStatus = useCallback(
+    async (
+      complaintId: string,
+      status: 'IN_REVIEW' | 'ESCALATED' | 'RESOLVED' | 'REJECTED',
+      resolution?: string
+    ) => {
+      await complaintApi.update(complaintId, { status, resolution });
+      setFeedback(`Complaint ${complaintId.slice(0, 8)} → ${status}`);
+      await refreshIncidents();
+    },
+    [refreshIncidents]
+  );
 
   const refreshNotifications = useCallback(async () => {
     if (!admin) return;
@@ -2195,6 +2247,24 @@ export const DashboardPage = ({ tabOverride }: DashboardPageProps) => {
           }}
           onEscalateIncident={(incidentId) => {
             void escalateIncidentAction(incidentId);
+          }}
+          onOpenBooking={(bookingId) => {
+            setBookingQuery(bookingId);
+            setContextBookingId(bookingId);
+            navigateToTab('bookings');
+          }}
+        />
+      ) : null}
+
+      {canAccessActiveTab && activeTab === 'incidents' ? (
+        <ComplaintsSection
+          complaints={complaints}
+          canManage={canManageIncidents}
+          onRefresh={() => {
+            void refreshIncidents();
+          }}
+          onUpdate={(complaintId, status, resolution) => {
+            void updateComplaintStatus(complaintId, status, resolution);
           }}
           onOpenBooking={(bookingId) => {
             setBookingQuery(bookingId);

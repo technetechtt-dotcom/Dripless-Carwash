@@ -2,18 +2,21 @@
 
 Staging cloud stack: **Neon Postgres** (database) + **Render** (API, Redis, Customer/Driver/Ops static sites).
 
-## 1. Create Neon database
+## 1. Neon database (existing project: **dripless wash**)
 
-1. Sign up / sign in at [https://console.neon.tech](https://console.neon.tech).
-2. **New project** → name `dripless` → region close to Render (`Frankfurt` / `eu-central-1` preferred).
-3. Open **Connection details**.
-4. Copy the **pooled** connection string and ensure it includes `sslmode=require`, e.g.
+Project already exists in Neon — do **not** create a new one.
+
+1. Open [https://console.neon.tech/app/projects](https://console.neon.tech/app/projects) → **dripless wash**.
+2. **Dashboard → Connect** (or Connection details).
+3. Choose **Pooled connection** and copy the URI. For Prisma on Render, prefer:
 
    ```text
-   postgresql://USER:PASSWORD@ep-xxxx.eu-central-1.aws.neon.tech/neondb?sslmode=require
+   postgresql://USER:PASSWORD@ep-xxxx-pooler.region.aws.neon.tech/neondb?sslmode=require&pgbouncer=true&connect_timeout=30
    ```
 
-5. (Optional) Create a branch named `staging` and use that connection string instead of main.
+   Local copy (gitignored): `backend-api/.env.neon` — migrations already applied + demo seed on **dripless wash**.
+
+4. Optional: create a `staging` branch and use that URI so production data stays untouched.
 
 ## 2. Put the code on GitHub
 

@@ -4,7 +4,7 @@ import { AnimatePresence, motion } from 'framer-motion';
 import { useBookings } from '../contexts/BookingContext';
 import { formatCurrency, formatPoints } from '../utils/currency';
 
-type PaymentMethod = 'ozow' | 'wallet';
+type PaymentMethod = 'stub' | 'wallet';
 
 type CheckoutModalProps = {
   isOpen: boolean;
@@ -19,11 +19,11 @@ type CheckoutModalProps = {
 
 const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, onConfirm, selectedPackage, customServices, date, time, location }) => {
   const { walletBalance } = useBookings();
-  const [selectedPayment, setSelectedPayment] = useState<PaymentMethod>('ozow');
+  const [selectedPayment, setSelectedPayment] = useState<PaymentMethod>('stub');
   const total = selectedPackage?.price ?? customServices?.reduce((sum, service) => sum + service.price, 0) ?? 0;
   const canPayWithWallet = walletBalance >= total;
   const options = [
-    { id: 'ozow' as const, label: 'Pay by bank (Ozow)', description: 'Secure instant EFT via Ozow', icon: CreditCardIcon, available: true },
+    { id: 'stub' as const, label: 'Pay now', description: 'Secure checkout (demo / staging)', icon: CreditCardIcon, available: true },
     { id: 'wallet' as const, label: 'Dripless Wallet', description: `Balance: ${formatCurrency(walletBalance)}`, icon: WalletIcon, available: canPayWithWallet }
   ];
 

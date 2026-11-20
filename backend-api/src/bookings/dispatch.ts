@@ -97,14 +97,18 @@ export async function rankDriversForBooking(bookingId: string, limit = 5) {
 
 export async function autoAssignDriver(
   bookingId: string,
-  tx?: Prisma.TransactionClient
+  tx?: Prisma.TransactionClient,
+  options?: { requirePaid?: boolean; acceptTimeoutMs?: number }
 ) {
   const db = tx ?? prisma;
   const booking = await db.booking.findUnique({ where: { id: bookingId } });
   if (!booking || booking.driverId) return null;
+  const requirePaid = options?.requirePaid !== false;
+  if (requirePaid && booking.paymentStatus !== 'PAID') return null;
   if (!env.demoMode && (booking.pickupLat == null || booking.pickupLng == null)) {
     return null;
   }
+  const acceptTimeoutMs = options?.acceptTimeoutMs ?? 120_000;
 
   const ranked = await rankDriversForBooking(bookingId, 1);
   const best = ranked[0];
@@ -130,7 +134,7 @@ export async function autoAssignDriver(
         status: booking.status === 'PENDING' ? 'CONFIRMED' : booking.status,
         dispatchReason: reason,
         dispatchAttemptCount: { increment: 1 },
-        acceptBy: new Date(Date.now() + 30_000)
+        acceptBy: new Date(Date.now() + acceptTimeoutMs)
       }
     });
     if (bookingClaim.count !== 1) throw new Error('Booking was assigned concurrently');

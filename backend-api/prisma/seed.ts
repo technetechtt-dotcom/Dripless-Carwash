@@ -204,6 +204,7 @@ async function main() {
         create: {
           id: 'customer_demo_001',
           name: 'Demo Customer',
+          phone: '+27821234567',
           status: 'ACTIVE',
           walletBalance: 5000,
           walletCashBalance: 5000,
@@ -214,6 +215,10 @@ async function main() {
         }
       }
     }
+  });
+  await prisma.customerProfile.update({
+    where: { id: 'customer_demo_001' },
+    data: { phone: '+27821234567', status: 'ACTIVE' }
   });
 
   await prisma.walletLedgerEntry.upsert({
