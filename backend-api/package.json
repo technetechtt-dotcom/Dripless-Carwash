@@ -35,7 +35,7 @@
     "express-rate-limit": "^8.7.0",
     "helmet": "^8.1.0",
     "ioredis": "^6.0.0",
-    "sharp": "^0.35.4",
+    "sharp": "^0.35.5",
     "zod": "^4.5.4"
   },
   "prisma": {
